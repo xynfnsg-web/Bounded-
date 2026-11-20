@@ -53,8 +53,9 @@ Every member receives **$1,000 starter cash**. All games are rebalanced for fair
 | `,volume <1-100>` | `,volume 75` | Sets playback volume percentage |
 | `,loop [off\|song\|queue]` | `,loop song` | Changes loop / repeat mode |
 | `,shuffle` | `,shuffle` | Shuffles the upcoming queue |
+| `.vcafk [channel\|off]` | `.vcafk` | Locks the bot in voice channel 24/7 forever until disconnected (auto-reconnects on restart) |
 
-*(Aliases: `,p` for play, `,s` for skip, `,dc` for stop, `,unpause` for resume, `,q` for queue, `,np` for nowplaying, `,vol` for volume)*
+*(Aliases: `,p` for play, `,s` for skip, `,dc` for stop, `,unpause` for resume, `,q` for queue, `,np` for nowplaying, `,vol` for volume, `.247` or `.afkvc` for vcafk)*
 
 ---
 
@@ -98,15 +99,15 @@ Discord button-driven support ticket channels with automatic permissions and del
 | :--- | :--- | :--- |
 | `,snipe` *(alias: `,s`)* | `,s` | Reveals the most recently deleted message and attachments in the current channel (all deletions also automatically logged to channel `1560394478395854859`) |
 | `,afk [reason]` | `,afk eating lunch` | Sets your AFK status with optional reason, adds `[AFK]` tag, alerts anyone who mentions you, and auto-removes upon your return message |
-| `,push <githubURL> [msg]` | `,push https://github.com/User/Repo.git` | Pushes bot repository code directly to GitHub (Admin only) |
-| `,help` | `,help` | Opens full interactive command and feature manual |
+| `.push [msg]` | `.push` or `.push Update bot` | Pushes bot codebase directly to https://github.com/xynfnsg-web/Bounded- (Admin only) |
+| `.help` | `.help` | Opens full interactive command and feature manual |
 
 ---
 
 ### 🚀 Pushing to GitHub
 You can push the bot to GitHub in either of two ways:
-1. **Via Discord:** Type `,push <your_github_repo_url> [commit message]` in any admin channel.
-2. **Via Desktop:** Double-click [`push.bat`](push.bat) and paste your GitHub repository URL.
+1. **Via Discord:** Type `.push [optional commit message]` (defaults to `https://github.com/xynfnsg-web/Bounded-`)
+2. **Via Desktop:** Double-click [`push.bat`](push.bat) to push to `https://github.com/xynfnsg-web/Bounded-`
 *(All sensitive tokens and node_modules are automatically ignored by `.gitignore`)*
 
 ### 📖 Help

@@ -1,5 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
+
+REM Ensure Git is in PATH for this session
+if exist "%LOCALAPPDATA%\Programs\Git\cmd" set "PATH=%LOCALAPPDATA%\Programs\Git\cmd;%PATH%"
+if exist "%ProgramFiles%\Git\cmd" set "PATH=%ProgramFiles%\Git\cmd;%PATH%"
+if exist "C:\Program Files\Git\cmd" set "PATH=C:\Program Files\Git\cmd;%PATH%"
+
 title Push /bounded Discord Bot to GitHub
 cls
 echo ========================================================
@@ -10,7 +16,7 @@ echo.
 git status --short
 echo.
 
-set "DEFAULT_REMOTE=https://github.com/xron44507-star/bounded"
+set "DEFAULT_REMOTE=https://github.com/xynfnsg-web/Bounded-.git"
 echo Target Repository: %DEFAULT_REMOTE%
 set "INPUT_REPO="
 set /p "INPUT_REPO=Press ENTER to push to this repo, or paste a different URL: "
@@ -57,7 +63,7 @@ if %ERRORLEVEL% EQU 0 (
     echo ========================================================
     echo [ERROR] Git push encountered an issue.
     echo Make sure you are signed into your GitHub account:
-    echo https://github.com/xron44507-star
+    echo https://github.com/xynfnsg-web
     echo ========================================================
 )
 

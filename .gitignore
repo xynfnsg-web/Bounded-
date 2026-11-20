@@ -7,7 +7,7 @@ hardbans.json
 warnings.json
 tickets.json
 guildSettings.json
+vcAfk.json
 .DS_Store
+
 bounded.zip
-avatar*.png
-banner.png

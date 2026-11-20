@@ -86,7 +86,7 @@ function buildControlPanel(owner, channel) {
         new ButtonBuilder()
             .setCustomId(`btn_vc_unhide_${channel.id}`)
             .setLabel('Unhide')
-            .setEmoji('👀')
+            .setEmoji('👁️‍🗨️')
             .setStyle(ButtonStyle.Secondary)
     );
 
@@ -243,31 +243,18 @@ async function handleVoiceStateUpdate(oldState, newState) {
 
     const jtcSettings = guildSettings.getJtcSettings(guild.id);
     const hubChannelId = jtcSettings.channelId;
-    const targetChannel = newState.channel;
 
-    // 1. Check if member joined the JTC Hub (either explicitly configured or named 'join to create' / 'create vc')
-    const isExplicitHub = hubChannelId && newState.channelId === hubChannelId;
-    const isNamedHub = targetChannel && (
-        /join\s*to\s*create/i.test(targetChannel.name) ||
-        /create\s*vc/i.test(targetChannel.name) ||
-        /➕.*create/i.test(targetChannel.name)
-    );
-
-    if (newState.channelId && (isExplicitHub || isNamedHub)) {
+    // 1. Check if member joined the JTC Hub
+    if (newState.channelId && newState.channelId === hubChannelId) {
         const member = newState.member;
         if (!member || member.user.bot) return;
 
-        // Auto-save hub if it was auto-detected so future checks are instant
-        if (!hubChannelId && targetChannel) {
-            guildSettings.setJtcSettings(guild.id, targetChannel.id, targetChannel.parentId || null);
-        }
-
         try {
-            const categoryId = jtcSettings.categoryId || targetChannel?.parentId;
+            const categoryId = jtcSettings.categoryId;
             const category = categoryId ? guild.channels.cache.get(categoryId) : null;
-            const channelName = `🔊・${member.displayName.slice(0, 18)}'s Room`;
+            const channelName = `🔊・${member.displayName.slice(0, 20)}'s Room`;
 
-            // Create new temp voice channel with FULL text and voice permissions
+            // Create new temp voice channel
             const tempChannel = await guild.channels.create({
                 name: channelName,
                 type: ChannelType.GuildVoice,
@@ -276,15 +263,7 @@ async function handleVoiceStateUpdate(oldState, newState) {
                 permissionOverwrites: [
                     {
                         id: guild.roles.everyone.id,
-                        allow: [
-                            PermissionsBitField.Flags.ViewChannel,
-                            PermissionsBitField.Flags.Connect,
-                            PermissionsBitField.Flags.Speak,
-                            PermissionsBitField.Flags.SendMessages,
-                            PermissionsBitField.Flags.ReadMessageHistory,
-                            PermissionsBitField.Flags.EmbedLinks,
-                            PermissionsBitField.Flags.AttachFiles
-                        ]
+                        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.Speak]
                     },
                     {
                         id: member.id,
@@ -292,12 +271,7 @@ async function handleVoiceStateUpdate(oldState, newState) {
                             PermissionsBitField.Flags.ViewChannel,
                             PermissionsBitField.Flags.Connect,
                             PermissionsBitField.Flags.Speak,
-                            PermissionsBitField.Flags.MoveMembers,
-                            PermissionsBitField.Flags.SendMessages,
-                            PermissionsBitField.Flags.ReadMessageHistory,
-                            PermissionsBitField.Flags.EmbedLinks,
-                            PermissionsBitField.Flags.AttachFiles,
-                            PermissionsBitField.Flags.ManageChannels
+                            PermissionsBitField.Flags.MoveMembers
                         ]
                     },
                     {
@@ -307,22 +281,14 @@ async function handleVoiceStateUpdate(oldState, newState) {
                             PermissionsBitField.Flags.ManageChannels,
                             PermissionsBitField.Flags.MoveMembers,
                             PermissionsBitField.Flags.Connect,
-                            PermissionsBitField.Flags.Speak,
-                            PermissionsBitField.Flags.SendMessages,
-                            PermissionsBitField.Flags.EmbedLinks,
-                            PermissionsBitField.Flags.ReadMessageHistory,
-                            PermissionsBitField.Flags.AttachFiles
+                            PermissionsBitField.Flags.Speak
                         ]
                     }
                 ]
             });
 
             // Move the member to their new channel
-            try {
-                await member.voice.setChannel(tempChannel);
-            } catch (moveErr) {
-                console.error('[TEMP_VOICE] Could not move member to temp VC:', moveErr.message);
-            }
+            await member.voice.setChannel(tempChannel);
 
             // Register in tracking map
             activeTempChannels.set(tempChannel.id, {
@@ -337,22 +303,7 @@ async function handleVoiceStateUpdate(oldState, newState) {
 
             // Send interactive control panel in the voice channel's text chat
             const panel = buildControlPanel(member.user, tempChannel);
-            const panelPayload = {
-                content: `🔔 <@${member.id}> **Welcome to your voice channel!** Use the interactive controls below to configure your room:`,
-                embeds: panel.embeds,
-                components: panel.components
-            };
-
-            // Send with retry to handle Discord voice text propagation
-            tempChannel.send(panelPayload)
-                .then(() => console.log(`[TEMP_VOICE] Panel successfully posted in ${tempChannel.name} for ${member.user.tag}`))
-                .catch(async (sendErr) => {
-                    console.error('[TEMP_VOICE] Initial panel send failed, retrying in 300ms:', sendErr.message);
-                    setTimeout(() => {
-                        tempChannel.send(panelPayload).catch(e => console.error('[TEMP_VOICE] Panel retry failed:', e.message));
-                    }, 300);
-                });
-
+            await tempChannel.send(panel).catch(() => {});
         } catch (err) {
             console.error('[TEMP_VOICE] Error creating temp channel:', err);
         }
@@ -584,39 +535,9 @@ async function handleInteraction(interaction) {
     }
 }
 
-// Manual .vcpanel / .panel command to re-send the panel at any time
-async function sendManualPanel(message) {
-    const member = message.member;
-    const voiceChannel = member?.voice?.channel;
-    if (!voiceChannel) {
-        return message.reply({ content: '❌ You must be connected to a voice channel to open the voice control panel!' });
-    }
-
-    const panel = buildControlPanel(member.user, voiceChannel);
-    const targetChannel = voiceChannel.isTextBased() ? voiceChannel : message.channel;
-
-    try {
-        await targetChannel.send({
-            content: `🔔 <@${member.id}> Here is your Voice Channel Control Panel:`,
-            embeds: panel.embeds,
-            components: panel.components
-        });
-        if (targetChannel.id !== message.channel.id) {
-            message.reply({ content: `✅ Voice Control Panel sent in <#${voiceChannel.id}>!` }).then(m => setTimeout(() => m.delete().catch(() => {}), 4000));
-        }
-    } catch (err) {
-        message.channel.send({
-            content: `🔔 <@${member.id}> Here is your Voice Channel Control Panel (for <#${voiceChannel.id}>):`,
-            embeds: panel.embeds,
-            components: panel.components
-        });
-    }
-}
-
 module.exports = {
     setupJtc,
     handleVoiceStateUpdate,
     handleInteraction,
-    sendManualPanel,
     activeTempChannels
 };

@@ -27,42 +27,17 @@ const altshield = require('./altshield');
 const tickets = require('./tickets');
 const guildSettings = require('./guildSettings');
 const tempVoice = require('./tempVoice');
+const vcAfk = require('./vcAfk');
 
-// Configuration & Cloud Compatibility
-const http = require('http');
-const TOKEN = process.env.DISCORD_TOKEN || process.env.TOKEN || process.env.BOT_TOKEN;
-const PREFIX = process.env.PREFIX || '.';
-
-console.log('====================================================');
-console.log('⚡ [BOUNDED BOOT] Initializing Bounded Discord Bot...');
-console.log(`⚡ [BOUNDED BOOT] Node.js Version: ${process.version}`);
-console.log(`⚡ [BOUNDED BOOT] Platform: ${process.platform} (${process.arch})`);
-console.log(`⚡ [BOUNDED BOOT] Environment: ${process.env.NODE_ENV || 'production'}`);
-console.log(`⚡ [BOUNDED BOOT] Token Detected: ${TOKEN ? 'YES (' + TOKEN.slice(0, 6) + '...' + TOKEN.slice(-4) + ')' : 'NO'}`);
-console.log('====================================================');
+// Configuration
+const TOKEN = process.env.DISCORD_TOKEN;
+const PREFIX = '.';
 
 if (!TOKEN || TOKEN === 'YOUR_BOT_TOKEN_HERE') {
-    console.error('❌ [FATAL ERROR] No valid bot token found!');
-    console.error('Please configure DISCORD_TOKEN or TOKEN in your Railway/Cloud Environment Variables!');
+    console.error('\x1b[31m[ERROR] No valid DISCORD_TOKEN found in .env!\x1b[0m');
+    console.log('Please open .env and set your bot token:');
+    console.log('DISCORD_TOKEN=your_token_here');
     process.exit(1);
-}
-
-// Cloud Health Check Endpoint for Railway / Render / Koyeb
-const CLOUD_PORT = process.env.PORT;
-if (CLOUD_PORT) {
-    const healthServer = http.createServer((req, res) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-            status: 'online',
-            bot: client.user ? client.user.tag : 'connecting',
-            guilds: client.guilds ? client.guilds.cache.size : 0,
-            uptime: Math.floor(process.uptime()),
-            timestamp: new Date().toISOString()
-        }));
-    });
-    healthServer.listen(CLOUD_PORT, '0.0.0.0', () => {
-        console.log(`🌐 [CLOUD HEALTH CHECK] HTTP server listening on 0.0.0.0:${CLOUD_PORT} (Railway/Cloud ready).`);
-    });
 }
 
 // Color Theme (Moody Dark / Gothic Aesthetic)
@@ -122,20 +97,14 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers
     ],
-    ws: {
-        properties: {
-            browser: 'Discord iOS'
-        }
-    },
     rest: {
-        timeout: 8000,
-        retries: 2,
-        offset: 0
+        timeout: 15000,
+        retries: 3
     },
     sweepers: {
         messages: {
-            interval: 180,
-            lifetime: 300
+            interval: 300,
+            lifetime: 600
         }
     }
 });
@@ -1245,6 +1214,11 @@ distube
         }).catch(() => {});
     })
     .on('empty', queue => {
+        const guildId = queue.textChannel?.guild?.id || queue.voice?.channel?.guildId;
+        if (guildId && vcAfk.isVcAfkEnabled(guildId)) {
+            // 24/7 VC AFK active in this server; stay in voice channel silently
+            return;
+        }
         queue.textChannel?.send({
             embeds: [makeEmbed('Channel Empty 💨', 'Voice channel is empty. Leaving voice channel.', COLORS.WARNING)]
         }).catch(() => {});
@@ -1269,6 +1243,28 @@ client.once(Events.ClientReady, c => {
     });
 
     updateBotPresence();
+
+    // Auto-reconnect active 24/7 VC AFK connections across guilds
+    const activeAfkGuilds = vcAfk.getAllActiveVcAfk();
+    const afkEntries = Object.entries(activeAfkGuilds);
+    if (afkEntries.length > 0) {
+        console.log(`[VC_AFK] Restoring ${afkEntries.length} active 24/7 VC connection(s)...`);
+        for (const [gId, conf] of afkEntries) {
+            try {
+                const guild = c.guilds.cache.get(gId);
+                if (!guild) continue;
+                const channel = guild.channels.cache.get(conf.channelId);
+                if (!channel || !channel.isVoiceBased()) continue;
+                const perms = channel.permissionsFor(guild.members.me);
+                if (!perms || !perms.has(PermissionsBitField.Flags.Connect)) continue;
+                distube.voices.join(channel)
+                    .then(() => console.log(`\x1b[32m[VC_AFK] Reconnected 24/7 VC: "${channel.name}" in "${guild.name}"\x1b[0m`))
+                    .catch(err => console.error(`[VC_AFK] Failed to reconnect "${channel.name}" (${guild.name}):`, err?.message || err));
+            } catch (err) {
+                console.error(`[VC_AFK] Error restoring guild ${gId}:`, err);
+            }
+        }
+    }
 });
 
 // Dynamic Multi-Server Handlers
@@ -1439,7 +1435,11 @@ function getHelpCategoryEmbed(category, avatarUrl, serverName = null) {
                 `• \`${PREFIX}nowplaying\` *(alias: \`${PREFIX}np\`)* — Track progress bar and requester info\n` +
                 `• \`${PREFIX}volume <1-100>\` *(alias: \`${PREFIX}vol\`)* — Adjust volume percentage\n` +
                 `• \`${PREFIX}loop [off|song|queue]\` — Toggle repeat mode\n` +
-                `• \`${PREFIX}shuffle\` — Randomize upcoming queue order`
+                `• \`${PREFIX}shuffle\` — Randomize upcoming queue order\n\n` +
+                `**24/7 Voice Channel AFK**\n` +
+                `• \`${PREFIX}vcafk [channel|off]\` *(alias: \`${PREFIX}247\`)* — Stay in the voice channel 24/7 forever until disconnected\n` +
+                `• \`${PREFIX}vcafk status\` — Check 24/7 VC AFK status and duration\n` +
+                `• \`${PREFIX}leave\` *(alias: \`${PREFIX}dc\`)* — Disconnect from VC and disable 24/7 mode`
             )
             .setFooter({ text: `Page: Voice Music • Prefix: ${PREFIX}` })
             .setTimestamp();
@@ -1621,6 +1621,28 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         await tempVoice.handleVoiceStateUpdate(oldState, newState);
     } catch (err) {
         console.error('[TEMP_VOICE EVENT ERROR]', err);
+    }
+
+    // VC AFK State Tracking for the Bot
+    try {
+        if (client.user && (newState.id === client.user.id || oldState.id === client.user.id)) {
+            const guildId = newState.guild?.id || oldState.guild?.id;
+            if (guildId && vcAfk.isVcAfkEnabled(guildId)) {
+                // If bot was moved to a different voice channel in the same guild
+                if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+                    const newChan = newState.channel;
+                    vcAfk.updateVcAfkChannel(guildId, newState.channelId, newChan ? newChan.name : 'Unknown');
+                    console.log(`[VC_AFK] Bot moved to "${newChan ? newChan.name : newState.channelId}" in "${newState.guild.name}". Updated 24/7 channel.`);
+                }
+                // If bot was disconnected from voice (e.g. disconnected by user, admin or kick)
+                else if (oldState.channelId && !newState.channelId) {
+                    vcAfk.disableVcAfk(guildId);
+                    console.log(`[VC_AFK] Bot disconnected from voice in "${oldState.guild?.name || guildId}". 24/7 VC AFK deactivated.`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[VC_AFK VOICE STATE ERROR]', err);
     }
 });
 
@@ -1980,8 +2002,8 @@ client.on(Events.MessageCreate, async message => {
             }).then(m => setTimeout(() => m?.delete().catch(() => {}), 8000));
         }
 
-        // ----------------- AFK MENTIONS CHECK (Skipped on commands for ultra-fast response) -----------------
-        if (!message.content.startsWith(PREFIX) && message.mentions.users.size > 0) {
+        // ----------------- AFK MENTIONS CHECK -----------------
+        if (message.mentions.users.size > 0) {
             message.mentions.users.forEach(mentionedUser => {
                 if (mentionedUser.bot || mentionedUser.id === userId) return;
                 const targetAfk = afk.getAfk(mentionedUser.id);
@@ -2133,6 +2155,9 @@ client.on(Events.MessageCreate, async message => {
             const isForce = args.includes('--force') || args.includes('-f');
             const cleanArgs = args.filter(a => a !== '--force' && a !== '-f');
 
+            let repoUrl = 'https://github.com/xynfnsg-web/Bounded-.git';
+            let commitMsg = 'Update /bounded Discord Bot';
+
             if (cleanArgs[0] && (cleanArgs[0].includes('github.com') || cleanArgs[0].endsWith('.git'))) {
                 repoUrl = cleanArgs[0];
                 if (cleanArgs.slice(1).length > 0) commitMsg = cleanArgs.slice(1).join(' ');
@@ -2153,7 +2178,16 @@ client.on(Events.MessageCreate, async message => {
                 cmdStr += ` && git push${forceFlag}`;
             }
 
-            exec(cmdStr, { cwd: __dirname }, (err, stdout, stderr) => {
+            const gitEnv = { ...process.env };
+            const possibleGitPaths = [
+                path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Git', 'cmd'),
+                'C:\\Program Files\\Git\\cmd'
+            ].filter(p => fs.existsSync(p));
+            if (possibleGitPaths.length > 0) {
+                gitEnv.PATH = `${possibleGitPaths.join(';')};${gitEnv.PATH || ''}`;
+            }
+
+            exec(cmdStr, { cwd: __dirname, env: gitEnv }, (err, stdout, stderr) => {
                 if (err) {
                     const outputText = stderr || err.message || stdout;
                     const errorDesc = outputText.slice(0, 1200);
@@ -2190,10 +2224,6 @@ client.on(Events.MessageCreate, async message => {
         // ----------------- JOIN-TO-CREATE VOICE HUB COMMAND -----------------
         if (cmd === 'jointoocreate' || cmd === 'jtc' || cmd === 'setupjtc' || cmd === 'tempvc') {
             return tempVoice.setupJtc(message);
-        }
-
-        if (cmd === 'vcpanel' || cmd === 'panel' || cmd === 'voicepanel') {
-            return tempVoice.sendManualPanel(message);
         }
 
         // ----------------- CASINO & GAMBLING COMMANDS -----------------
@@ -2878,14 +2908,200 @@ client.on(Events.MessageCreate, async message => {
             }
         }
 
-        if (cmd === 'stop' || cmd === 'leave' || cmd === 'dc') {
+        // ----------------- 24/7 VC AFK COMMAND -----------------
+        if (cmd === 'vcafk' || cmd === 'afkvc' || cmd === '247' || cmd === 'vc247' || cmd === 'stay') {
+            const sub = (args[0] || '').toLowerCase();
+            const isCurrentlyAfk = vcAfk.isVcAfkEnabled(message.guild.id);
+            const currentAfk = vcAfk.getVcAfk(message.guild.id);
+
+            // Subcommand: status / info
+            if (sub === 'status' || sub === 'info') {
+                if (!isCurrentlyAfk || !currentAfk) {
+                    return fastReply(message, {
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(COLORS.PRIMARY)
+                                .setTitle('🔊 VC AFK 24/7 Status')
+                                .setDescription(`VC AFK 24/7 mode is currently **Disabled** on this server.\n\nUse \`${PREFIX}vcafk\` while in a voice channel to enable it.`)
+                                .setTimestamp()
+                        ]
+                    });
+                }
+                const uptime = vcAfk.formatDuration(Date.now() - (currentAfk.setAt || Date.now()));
+                return fastReply(message, {
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(COLORS.SUCCESS)
+                            .setTitle('🔊 VC AFK 24/7 Status')
+                            .setDescription(
+                                `VC AFK 24/7 mode is currently **Active**!\n\n` +
+                                `• **Voice Channel:** <#${currentAfk.channelId}> (\`${currentAfk.channelName || currentAfk.channelId}\`)\n` +
+                                `• **Active Since:** <t:${Math.floor((currentAfk.setAt || Date.now()) / 1000)}:R> *(Duration: ${uptime})*\n` +
+                                `• **Activated By:** <@${currentAfk.setBy}>\n` +
+                                `• **Auto-Reconnect:** \`Enabled (Persists across restarts)\`\n\n` +
+                                `To disable, type \`${PREFIX}vcafk off\` or \`${PREFIX}dc\`.`
+                            )
+                            .setTimestamp()
+                    ]
+                });
+            }
+
+            // Subcommand: off / disable / stop / leave
+            if (sub === 'off' || sub === 'disable' || sub === 'stop' || sub === 'leave') {
+                if (!isCurrentlyAfk) {
+                    return fastReply(message, { embeds: [makeEmbed('VC AFK Not Active', 'VC AFK 24/7 mode is not currently active on this server.', COLORS.WARNING, '⚠️')] });
+                }
+                const removed = vcAfk.disableVcAfk(message.guild.id);
+                const queue = distube.getQueue(message);
+                if (queue) queue.stop();
+                distube.voices.leave(message);
+                return fastReply(message, {
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(COLORS.PRIMARY)
+                            .setTitle('🔇 VC AFK Disabled')
+                            .setDescription(`24/7 VC AFK mode has been turned **OFF**. The bot has disconnected from **${removed?.channelName || 'voice'}** and will no longer stay connected.`)
+                            .setFooter({ text: `Disabled by ${message.author.tag}` })
+                            .setTimestamp()
+                    ]
+                });
+            }
+
+            // If user typed `.vcafk` with no args and AFK is already active: toggle OFF!
+            const userVoiceChannel = message.member?.voice?.channel;
+            if (!args[0] && isCurrentlyAfk && currentAfk) {
+                const botVoiceChannel = message.guild.members.me?.voice?.channel;
+                if (!userVoiceChannel || userVoiceChannel.id === currentAfk.channelId || (botVoiceChannel && botVoiceChannel.id === currentAfk.channelId)) {
+                    const removed = vcAfk.disableVcAfk(message.guild.id);
+                    const queue = distube.getQueue(message);
+                    if (queue) queue.stop();
+                    distube.voices.leave(message);
+                    return fastReply(message, {
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(COLORS.PRIMARY)
+                                .setTitle('🔇 VC AFK Disabled')
+                                .setDescription(`24/7 VC AFK mode has been toggled **OFF**. The bot has disconnected from **${removed?.channelName || 'voice'}**.`)
+                                .setFooter({ text: `Toggled by ${message.author.tag} • Run ${PREFIX}vcafk to re-enable` })
+                                .setTimestamp()
+                        ]
+                    });
+                }
+            }
+
+            // Resolve target channel
+            let targetChannel = null;
+
+            // Check if user specified a channel mention or ID / name in args
+            if (args[0] && sub !== 'on' && sub !== 'enable') {
+                const mentionMatch = args[0].match(/^<#(\d+)>$/);
+                const channelId = mentionMatch ? mentionMatch[1] : args[0];
+                const foundChannel = message.guild.channels.cache.get(channelId) ||
+                    message.guild.channels.cache.find(c => c.isVoiceBased() && c.name.toLowerCase() === args.join(' ').toLowerCase());
+                if (foundChannel && foundChannel.isVoiceBased()) {
+                    targetChannel = foundChannel;
+                }
+            }
+
+            // Fallback to user's current voice channel
+            if (!targetChannel) {
+                targetChannel = userVoiceChannel;
+            }
+
+            if (!targetChannel || !targetChannel.isVoiceBased()) {
+                return fastReply(message, {
+                    embeds: [
+                        makeEmbed(
+                            'Voice Channel Required ⚠️',
+                            `You must be connected to a voice channel or specify one to activate VC AFK!\n\n` +
+                            `• Join a voice channel and type: \`${PREFIX}vcafk\`\n` +
+                            `• Or specify a voice channel: \`${PREFIX}vcafk <#voice-channel|channel_id>\``,
+                            COLORS.WARNING
+                        )
+                    ]
+                });
+            }
+
+            // Check permissions
+            const perms = targetChannel.permissionsFor(message.guild.members.me);
+            if (perms && !perms.has(PermissionsBitField.Flags.Connect)) {
+                return fastReply(message, {
+                    embeds: [makeEmbed('Permission Denied ⛔', `I need the **Connect** permission to join ${targetChannel}!`, COLORS.DANGER)]
+                });
+            }
+
+            const statusMsg = await fastReply(message, {
+                embeds: [makeEmbed('Connecting... ⏳', `Joining **${targetChannel.name}** and locking 24/7 VC AFK mode...`, COLORS.MUSIC)]
+            });
+
+            try {
+                await distube.voices.join(targetChannel);
+                vcAfk.setVcAfk(message.guild.id, targetChannel.id, targetChannel.name, message.author.id);
+
+                const embed = new EmbedBuilder()
+                    .setColor(COLORS.SUCCESS)
+                    .setTitle('🔊 VC AFK 24/7 Enabled')
+                    .setDescription(
+                        `The bot is now connected to **${targetChannel.name}** and will stay in this server's voice channel **forever** until disconnected!\n\n` +
+                        `• **Voice Channel:** <#${targetChannel.id}>\n` +
+                        `• **Mode:** \`24/7 VC AFK (Permanent Connection)\`\n` +
+                        `• **Persistence:** \`Active (Will auto-rejoin on bot restarts)\`\n` +
+                        `• **Streaming:** You can still use \`${PREFIX}play <query>\` to stream music anytime!\n\n` +
+                        `*To disconnect or disable, type \`${PREFIX}vcafk\` again or \`${PREFIX}dc\`.*`
+                    )
+                    .setFooter({ text: `Activated by ${message.author.tag} • Bounded 24/7 VC` })
+                    .setTimestamp();
+
+                if (statusMsg) {
+                    await statusMsg.edit({ embeds: [embed] }).catch(() => {});
+                } else {
+                    await fastReply(message, { embeds: [embed] });
+                }
+            } catch (err) {
+                console.error('[VCAFK ERROR]', err);
+                const errMsg = err.message || err.toString();
+                const errEmbed = makeEmbed('VC Connection Failed ❌', `Could not connect to **${targetChannel.name}**:\n\`${errMsg}\``, COLORS.DANGER);
+                if (statusMsg) {
+                    await statusMsg.edit({ embeds: [errEmbed] }).catch(() => {});
+                } else {
+                    await fastReply(message, { embeds: [errEmbed] });
+                }
+            }
+            return;
+        }
+
+        if (cmd === 'stop') {
             const queue = distube.getQueue(message);
+            const isAfk = vcAfk.isVcAfkEnabled(message.guild.id);
             if (!queue) {
+                if (isAfk) {
+                    const afkInfo = vcAfk.getVcAfk(message.guild.id);
+                    return fastReply(message, { embeds: [makeEmbed('No Music Playing', `There is no active music session to stop.\nThe bot is locked in <#${afkInfo?.channelId}> with **24/7 VC AFK** mode active.\nTo disconnect the bot, type \`${PREFIX}dc\` or \`${PREFIX}vcafk off\`.`, COLORS.WARNING, '⚠️')] });
+                }
                 return fastReply(message, { embeds: [makeEmbed('No Music Playing', 'There is no active music session to stop.', COLORS.WARNING, '⚠️')] });
             }
             queue.stop();
+            if (isAfk) {
+                const afkInfo = vcAfk.getVcAfk(message.guild.id);
+                return fastReply(message, { embeds: [makeEmbed('Playback Stopped', `Queue cleared and audio stopped.\nBot is staying connected in <#${afkInfo?.channelId}> because **24/7 VC AFK** is enabled.`, COLORS.PRIMARY, '⏹️')] });
+            }
             distube.voices.leave(message);
             return fastReply(message, { embeds: [makeEmbed('Playback Stopped', 'Queue cleared and left voice channel.', COLORS.PRIMARY, '⏹️')] });
+        }
+
+        if (cmd === 'leave' || cmd === 'dc' || cmd === 'disconnect') {
+            const queue = distube.getQueue(message);
+            const isAfk = vcAfk.isVcAfkEnabled(message.guild.id);
+            const botVoice = message.guild.members.me?.voice?.channel;
+
+            if (!queue && !botVoice) {
+                return fastReply(message, { embeds: [makeEmbed('Not in Voice', 'The bot is not currently connected to any voice channel.', COLORS.WARNING, '⚠️')] });
+            }
+
+            if (queue) queue.stop();
+            if (isAfk) vcAfk.disableVcAfk(message.guild.id);
+            distube.voices.leave(message);
+            return fastReply(message, { embeds: [makeEmbed('Disconnected', 'Left voice channel and disabled 24/7 VC AFK mode.', COLORS.PRIMARY, '🚪')] });
         }
 
         if (cmd === 'pause') {
@@ -3721,6 +3937,10 @@ client.on(Events.MessageCreate, async message => {
                 : '*None (Set with `.setmedia #channel`)*';
             const ticketCatDisplay = conf.ticketCategoryId ? `\`${conf.ticketCategoryId}\`` : '*Auto-detect or Current Category*';
             const appCatDisplay = conf.appCategoryId ? `\`${conf.appCategoryId}\`` : '*Auto-detect or Current Category*';
+            const afkConf = vcAfk.getVcAfk(message.guild.id);
+            const vcAfkDisplay = (afkConf && afkConf.enabled)
+                ? `🟢 **Active** in <#${afkConf.channelId}> (\`${afkConf.channelName || afkConf.channelId}\`)`
+                : '*Inactive (Enable with `.vcafk`)*';
 
             const embed = new EmbedBuilder()
                 .setColor(COLORS.PRIMARY)
@@ -3742,7 +3962,9 @@ client.on(Events.MessageCreate, async message => {
                     `• **Staff Apps Category:** ${appCatDisplay} *(Set with \`${PREFIX}setapps <category_id>\`)*\n` +
                     `• **Staff Applications Status:** **${appsState ? '🟢 OPEN' : '🔴 CLOSED'}** *(Toggle with \`${PREFIX}openapps\` / \`${PREFIX}closeapps\`)*\n\n` +
                     `**Community Treasury**\n` +
-                    `• **Vault Reserves:** \`${eco.formatMoney(ecoStats.serverFunds)}\` *(View with \`${PREFIX}serverfunds\`)*`
+                    `• **Vault Reserves:** \`${eco.formatMoney(ecoStats.serverFunds)}\` *(View with \`${PREFIX}serverfunds\`)*\n\n` +
+                    `**Voice Channel AFK 24/7**\n` +
+                    `• **Status:** ${vcAfkDisplay} *(Toggle with \`${PREFIX}vcafk\`)*`
                 )
                 .setFooter({ text: 'Configured per-guild • Isolated storage' })
                 .setTimestamp();
