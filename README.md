@@ -8,9 +8,10 @@ A dedicated, feature-packed Discord bot built with **Discord.js v14** and **DisT
 
 ---
 
-## 🚀 Quick Setup
+## 🚀 Quick Setup & 24/7 Cloud Hosting
 
-1. Your bot token is already configured in [`.env`](.env):
+### Option A: Local Run
+1. Your bot token is configured in [`.env`](.env):
    ```env
    DISCORD_TOKEN=your_token_here
    PREFIX=.
@@ -18,6 +19,14 @@ A dedicated, feature-packed Discord bot built with **Discord.js v14** and **DisT
 2. Start the bot:
    - Double-click [`start.bat`](start.bat), or
    - In terminal: `npm start`
+3. Web dashboard & command manual will be live at `http://localhost:3000`
+
+### Option B: Deploy to Render (100% Free 24/7 Hosting)
+See the complete guide in [**`RENDER_DEPLOY.md`**](RENDER_DEPLOY.md):
+1. Push to GitHub using [`push.bat`](push.bat)
+2. Connect your repo on [Render.com](https://dashboard.render.com/) as a **Web Service**
+3. Set `DISCORD_TOKEN` in Render Environment Variables
+4. Keep awake 24/7 using free [UptimeRobot](https://uptimerobot.com) pointing to `/health`!
 
 ---
 

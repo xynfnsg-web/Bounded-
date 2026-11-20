@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bounded — High-Performance Discord Bot</title>
+  <meta name="description" content="Bounded is an all-in-one Discord bot featuring 24/7 VC AFK audio streaming, luxury VIP casino games, Alt Shield security, temporary voice channels, and support tickets.">
+  <link rel="icon" type="image/png" href="/avatar.png">
+  <style>
+    :root {
+      --bg: #090a0c;
+      --bg-card: rgba(18, 20, 24, 0.75);
+      --bg-card-hover: rgba(26, 29, 36, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(139, 92, 246, 0.3);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #8b5cf6;
+      --primary-glow: rgba(139, 92, 246, 0.4);
+      --emerald: #10b981;
+      --gold: #f59e0b;
+      --ruby: #ef4444;
+      --cyan: #06b6d4;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(139, 92, 246, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 65%, rgba(16, 185, 129, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 90%, rgba(245, 158, 11, 0.06) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navbar */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      background: rgba(9, 10, 12, 0.8);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 72px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .logo-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      object-fit: cover;
+      background: #18191c;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 10px var(--emerald);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .nav-link {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: color 0.2s;
+    }
+    .nav-link:hover {
+      color: #ffffff;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 90px 0 60px;
+      text-align: center;
+    }
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid var(--border-accent);
+      color: #c4b5fd;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero-title {
+      font-size: clamp(36px, 5.5vw, 62px);
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-subtitle {
+      max-width: 680px;
+      margin: 0 auto 36px;
+      font-size: 18px;
+      color: var(--text-muted);
+    }
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 50px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-top: 40px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      text-align: left;
+      transition: all 0.2s;
+    }
+    .stat-card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+    }
+    .stat-label {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .stat-value {
+      font-size: 30px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+    }
+
+    /* Features */
+    .section {
+      padding: 80px 0;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+    .section-badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--primary);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+    .section-desc {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--border-accent), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .feature-card:hover {
+      border-color: var(--border-accent);
+      background: var(--bg-card-hover);
+      transform: translateY(-4px);
+    }
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+    .feature-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+    }
+    .feature-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+    .feature-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Commands Explorer */
+    .commands-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px;
+    }
+    .commands-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .category-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tab-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active, .tab-btn:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .search-input {
+      padding: 10px 18px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border);
+      color: #ffffff;
+      font-size: 14px;
+      width: 260px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: var(--primary);
+    }
+
+    .commands-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 14px;
+    }
+    .command-card {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+    .command-card:hover {
+      border-color: rgba(139, 92, 246, 0.3);
+      background: rgba(0, 0, 0, 0.5);
+    }
+    .cmd-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .cmd-name {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: #a78bfa;
+      background: rgba(139, 92, 246, 0.12);
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    .cmd-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+    }
+    .cmd-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .cmd-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.4);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      padding-top: 8px;
+    }
+    .copy-btn {
+      background: transparent;
+      border: none;
+      color: var(--primary);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .copy-btn:hover {
+      text-decoration: underline;
+    }
+
+    /* Render Banner */
+    .deploy-banner {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      margin: 40px 0;
+    }
+    .deploy-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      margin-bottom: 12px;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .commands-toolbar { flex-direction: column; align-items: stretch; }
+      .search-input { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="container nav-inner">
+      <div class="logo">
+        <img src="/avatar.png" alt="Bounded Logo" class="logo-avatar" onerror="this.style.display='none'">
+        <span>/bounded</span>
+        <span class="status-badge" id="nav-status-badge">
+          <span class="status-dot"></span>
+          <span id="nav-status-text">Online 24/7</span>
+        </span>
+      </div>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#commands" class="nav-link">Commands</a>
+        <a href="/health" target="_blank" class="nav-link">Health API</a>
+        <a href="https://github.com/xynfnsg-web/Bounded-" target="_blank" class="nav-link">GitHub</a>
+        <a id="nav-invite-btn" href="#" class="btn btn-primary">➕ Invite Bot</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="container">
+      <div class="hero-pill">
+        <span>✨ High-Performance Multi-Guild Architecture</span>
+      </div>
+      <h1 class="hero-title">The Ultimate 24/7 Discord<br>Music, Casino & Security Bot</h1>
+      <p class="hero-subtitle">
+        High-fidelity VC audio with perpetual 24/7 AFK mode, VIP casino duels with live button controls, automated Alt Shield security, and dynamic temporary voice hubs.
+      </p>
+
+      <div class="hero-actions">
+        <a id="hero-invite-btn" href="#" class="btn btn-primary" style="padding: 14px 30px; font-size: 16px;">
+          ➕ Add to Discord
+        </a>
+        <a href="#commands" class="btn btn-secondary" style="padding: 14px 30px; font-size: 16px;">
+          📖 Explore Commands
+        </a>
+      </div>
+
+      <!-- Live Statistics Grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">🌐 Active Servers</div>
+          <div class="stat-value" id="stat-servers">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">👥 Cached Members</div>
+          <div class="stat-value" id="stat-members">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">⚡ Gateway Ping</div>
+          <div class="stat-value" id="stat-ping">-- ms</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">⏱️ System Uptime</div>
+          <div class="stat-value" id="stat-uptime">--</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Features Section -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-badge">Everything You Need</span>
+        <h2 class="section-title">Built For Modern Discord Communities</h2>
+        <p class="section-desc">Engineered from the ground up for maximum reliability, speed, and fun.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" style="color: #a78bfa;">🔊</div>
+          <h3 class="feature-title">24/7 VC AFK & Streaming</h3>
+          <p class="feature-desc">
+            Keep the bot locked in your server's voice channel forever with <code>.vcafk</code>. Auto-reconnects across bot reboots, handles empty channels silently, and streams high-fidelity audio from YouTube, Spotify, and SoundCloud.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="color: #f59e0b;">🎲</div>
+          <h3 class="feature-title">Luxury VIP Casino</h3>
+          <p class="feature-desc">
+            Interactive buttons for Blackjack with 5-Card Charlie & Natural 21 bonuses, Bellagio slots with cherry refunds, 2-Dice Craps duels, European Roulette, and consecutive daily work streaks.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="color: #ef4444;">🛡️</div>
+          <h3 class="feature-title">Alt Shield & Hardban</h3>
+          <p class="feature-desc">
+            Instantly intercept and auto-ban fresh alternative accounts of hardbanned offenders the moment they join your server. Automated strike tracking, timeouts, purge, and DM receipts.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="color: #06b6d4;">🎙️</div>
+          <h3 class="feature-title">Join-to-Create Voice Hub</h3>
+          <p class="feature-desc">
+            Deploy dynamic temp voice rooms with <code>.jtc</code>. Members join the hub to instantly spawn private voice channels equipped with interactive in-chat control panels (Lock, Unlock, Hide, Rename).
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="color: #10b981;">🎫</div>
+          <h3 class="feature-title">Support Ticket Suite</h3>
+          <p class="feature-desc">
+            Deploy interactive 1-click button panels (<code>.ticketpanel</code>) to create private ticket channels with automated permissions, close confirmation prompts, and staff applicant routing.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="color: #ec4899;">🚀</div>
+          <h3 class="feature-title">Cloud Native & Self-Pinging</h3>
+          <p class="feature-desc">
+            Equipped with built-in HTTP health check endpoints (<code>/health</code> and <code>/ping</code>) designed for seamless 24/7 free tier hosting on Render, Koyeb, and Railway.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Commands Explorer -->
+  <section class="section" id="commands">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-badge">Command Manual</span>
+        <h2 class="section-title">Explore Bot Commands</h2>
+        <p class="section-desc">All commands use the default prefix <code>.</code> (dot)</p>
+      </div>
+
+      <div class="commands-container">
+        <div class="commands-toolbar">
+          <div class="category-tabs">
+            <button class="tab-btn active" onclick="filterCategory('all', this)">All</button>
+            <button class="tab-btn" onclick="filterCategory('voice', this)">Voice & AFK 🎵</button>
+            <button class="tab-btn" onclick="filterCategory('casino', this)">Casino & Economy 🎲</button>
+            <button class="tab-btn" onclick="filterCategory('mod', this)">Moderation & Shield 🛡️</button>
+            <button class="tab-btn" onclick="filterCategory('utility', this)">Tickets & Config ⚙️</button>
+          </div>
+          <input type="text" id="cmd-search" class="search-input" placeholder="Search commands..." oninput="searchCommands()">
+        </div>
+
+        <div class="commands-list" id="commands-list">
+          <!-- Commands generated dynamically via JavaScript -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Render Deployment Info Banner -->
+  <section class="container">
+    <div class="deploy-banner">
+      <span class="deploy-badge">Render 24/7 Web Service</span>
+      <h3 style="font-size: 24px; font-weight: 700; margin-bottom: 8px;">Ready for 1-Click Deployment</h3>
+      <p style="color: var(--text-muted); max-width: 650px; margin: 0 auto 20px; font-size: 15px;">
+        This web server automatically binds to Render's <code>PORT</code> and exposes <code>/health</code> for uptime monitors (like UptimeRobot), keeping your bot and website awake 24/7 without paid servers.
+      </p>
+      <a href="/health" target="_blank" class="btn btn-secondary">🔍 View Live /health JSON</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p style="margin-bottom: 8px;"><strong>/bounded</strong> &copy; 2026 • High-Performance Multi-Guild Discord Bot</p>
+      <p style="font-size: 13px; color: #6b7280;">Configured for 24/7 Hosting on Render • Built with Discord.js & DisTube</p>
+    </div>
+  </footer>
+
+  <script>
+    const COMMANDS = [
+      { name: ".vcafk [channel|off]", category: "voice", desc: "Stay in the voice channel 24/7 forever until disconnected. Auto-reconnects on reboot.", aliases: ".247, .afkvc, .stay" },
+      { name: ".play <query/URL>", category: "voice", desc: "Search and stream high-fidelity audio from YouTube, Spotify, or SoundCloud.", aliases: ".p" },
+      { name: ".skip", category: "voice", desc: "Vote skip or force skip to the next track in the queue.", aliases: ".s, .next" },
+      { name: ".stop", category: "voice", desc: "Stop playback and wipe current queue. Remains in VC if 24/7 VC AFK is active.", aliases: "None" },
+      { name: ".leave", category: "voice", desc: "Disconnect from voice channel and disable 24/7 VC AFK mode.", aliases: ".dc, .disconnect" },
+      { name: ".queue", category: "voice", desc: "Display current track, upcoming song queue, and total duration.", aliases: ".q" },
+      { name: ".nowplaying", category: "voice", desc: "Interactive track progress bar, duration, and requester info.", aliases: ".np" },
+      { name: ".volume <1-100>", category: "voice", desc: "Adjust music playback volume percentage.", aliases: ".vol" },
+      { name: ".loop [song|queue|off]", category: "voice", desc: "Cycle track or queue repeat modes.", aliases: "None" },
+      { name: ".shuffle", category: "voice", desc: "Randomize the upcoming queue order.", aliases: ".shuff" },
+
+      { name: ".balance [@user]", category: "casino", desc: "View your VIP casino membership card, wallet balance, and streaks.", aliases: ".bal" },
+      { name: ".blackjack <bet>", category: "casino", desc: "High-stakes table with 5-Card Charlie (2:1), Natural 21 (3:2), and button controls.", aliases: ".bj" },
+      { name: ".slots <bet>", category: "casino", desc: "Bellagio Vegas reels: 777 (15x), Diamonds (10x), Bells (6x), and Cherry refunds.", aliases: ".slot" },
+      { name: ".coinflip <h|t> <bet>", category: "casino", desc: "50/50 toss with consecutive win multipliers up to 2.5x max.", aliases: ".cf" },
+      { name: ".roulette <choice> <bet>", category: "casino", desc: "European wheel: Red/Black/Even/Odd (2x), Dozens (3x), Single 0 (18x).", aliases: "None" },
+      { name: ".dice <bet>", category: "casino", desc: "2-Dice Craps: Lucky Doubles (2.5x), Natural 7/11 (2.2x), and Push refunds.", aliases: "None" },
+      { name: ".daily", category: "casino", desc: "Claim daily stipend: +$500 to +$1,100 with consecutive streaks.", aliases: "None" },
+      { name: ".work", category: "casino", desc: "Clock in for a 15-minute shift ($120-$700) with job promotions & tips.", aliases: "None" },
+      { name: ".rob <@user>", category: "casino", desc: "Attempt a casino heist on another player for 20%-45% of wallet cash.", aliases: "None" },
+      { name: ".pay <@user> <amount>", category: "casino", desc: "Transfer money directly to another member.", aliases: "None" },
+      { name: ".leaderboard", category: "casino", desc: "Inspect the server-wide wealth rankings.", aliases: ".lb" },
+
+      { name: ".warn <@user> [reason]", category: "mod", desc: "Issue a recorded strike to a member with automated direct message receipt.", aliases: "None" },
+      { name: ".warnings <@user>", category: "mod", desc: "View a member's complete strike history and timestamps.", aliases: "None" },
+      { name: ".clearwarns <@user>", category: "mod", desc: "Clear all disciplinary strikes for a user.", aliases: "None" },
+      { name: ".timeout <@user> <time> [reason]", category: "mod", desc: "Temporarily mute/timeout a member (e.g. 10m, 1h, 1d).", aliases: "None" },
+      { name: ".untimeout <@user>", category: "mod", desc: "Remove active timeout restriction from a user.", aliases: "None" },
+      { name: ".purge <1-100>", category: "mod", desc: "Bulk delete recent messages in the current text channel.", aliases: "None" },
+      { name: ".kick <@user> [reason]", category: "mod", desc: "Kick member from server with DM notice.", aliases: "None" },
+      { name: ".ban <@user> [reason]", category: "mod", desc: "Ban user permanently from the server.", aliases: "None" },
+      { name: ".hardban <@user> [reason]", category: "mod", desc: "Permanent hardban + wipes 7 days of messages + Alt Shield bans alts on join.", aliases: "None" },
+      { name: ".unban <userID>", category: "mod", desc: "Revoke a ban by Discord User ID.", aliases: "None" },
+
+      { name: ".jointoocreate", category: "utility", desc: "Deploy dynamic temporary voice hub with in-chat control panel.", aliases: ".jtc, .tempvc" },
+      { name: ".ticketpanel [channel]", category: "utility", desc: "Send interactive 1-click button support panel for user inquiries.", aliases: "None" },
+      { name: ".serverconfig", category: "utility", desc: "Inspect guild settings, audit log channels, VC AFK, and treasury reserves.", aliases: ".config" },
+      { name: ".setlogs <#channel>", category: "utility", desc: "Assign deleted message audit channel & mod alerts.", aliases: ".modlog" },
+      { name: ".setmedia <#channel>", category: "utility", desc: "Enforce media-only (photos/videos) restriction on a channel.", aliases: "None" },
+      { name: ".afk [reason]", category: "utility", desc: "Set chat AFK status; notifies mentions and auto-clears on return.", aliases: "None" },
+      { name: ".snipe", category: "utility", desc: "Reveal recently deleted message or photo in the channel.", aliases: ".s" },
+      { name: ".botinfo", category: "utility", desc: "View global bot stats, total servers, members, and uptime.", aliases: ".stats" },
+      { name: ".push [msg]", category: "utility", desc: "Push bot codebase directly to https://github.com/xynfnsg-web/Bounded-.", aliases: ".gitpush" }
+    ];
+
+    let currentCategory = 'all';
+
+    function renderCommands(list) {
+      const container = document.getElementById('commands-list');
+      if (!list.length) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;">No matching commands found.</div>';
+        return;
+      }
+      container.innerHTML = list.map(c => `
+        <div class="command-card">
+          <div>
+            <div class="cmd-header">
+              <span class="cmd-name">${c.name}</span>
+              <span class="cmd-badge">${c.category.toUpperCase()}</span>
+            </div>
+            <p class="cmd-desc">${c.desc}</p>
+          </div>
+          <div class="cmd-footer">
+            <span>Alias: <code>${c.aliases}</code></span>
+            <button class="copy-btn" onclick="copyCommand('${c.name.split(' ')[0]}', this)">Copy</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filterCategory(cat, btn) {
+      currentCategory = cat;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      searchCommands();
+    }
+
+    function searchCommands() {
+      const query = document.getElementById('cmd-search').value.toLowerCase().trim();
+      const filtered = COMMANDS.filter(c => {
+        const matchesCategory = currentCategory === 'all' || c.category === currentCategory;
+        const matchesQuery = !query || c.name.toLowerCase().includes(query) || c.desc.toLowerCase().includes(query) || c.aliases.toLowerCase().includes(query);
+        return matchesCategory && matchesQuery;
+      });
+      renderCommands(filtered);
+    }
+
+    function copyCommand(cmd, btn) {
+      navigator.clipboard.writeText(cmd).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = 'Copied!';
+        setTimeout(() => btn.innerText = orig, 1500);
+      });
+    }
+
+    // Dynamic Live Stats Polling
+    async function updateStats() {
+      try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) throw new Error('Failed to fetch stats');
+        const data = await res.parse ? await res.parse() : await res.json();
+
+        document.getElementById('stat-servers').innerText = data.guilds ?? '0';
+        document.getElementById('stat-members').innerText = Number(data.members || 0).toLocaleString();
+        document.getElementById('stat-ping').innerText = `${Math.round(data.ping || 0)} ms`;
+        document.getElementById('stat-uptime').innerText = data.uptimeFormatted || 'Online';
+
+        if (data.bot) {
+          if (data.bot.avatarUrl) {
+            document.querySelectorAll('.logo-avatar').forEach(img => {
+              img.src = data.bot.avatarUrl;
+              img.style.display = 'block';
+            });
+          }
+          if (data.bot.id) {
+            const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${data.bot.id}&permissions=8&scope=bot%20applications.commands`;
+            const navBtn = document.getElementById('nav-invite-btn');
+            const heroBtn = document.getElementById('hero-invite-btn');
+            if (navBtn) navBtn.href = inviteUrl;
+            if (heroBtn) heroBtn.href = inviteUrl;
+          }
+        }
+      } catch (_) {
+        document.getElementById('stat-servers').innerText = 'Online';
+        document.getElementById('stat-members').innerText = 'Active';
+        document.getElementById('stat-ping').innerText = 'Fast';
+        document.getElementById('stat-uptime').innerText = '24/7';
+      }
+    }
+
+    renderCommands(COMMANDS);
+    updateStats();
+    setInterval(updateStats, 6000);
+  </script>
+</body>
+</html>

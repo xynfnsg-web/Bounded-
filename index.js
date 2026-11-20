@@ -28,16 +28,15 @@ const tickets = require('./tickets');
 const guildSettings = require('./guildSettings');
 const tempVoice = require('./tempVoice');
 const vcAfk = require('./vcAfk');
+const { startWebServer } = require('./webServer');
 
 // Configuration
 const TOKEN = process.env.DISCORD_TOKEN;
 const PREFIX = '.';
 
 if (!TOKEN || TOKEN === 'YOUR_BOT_TOKEN_HERE') {
-    console.error('\x1b[31m[ERROR] No valid DISCORD_TOKEN found in .env!\x1b[0m');
-    console.log('Please open .env and set your bot token:');
-    console.log('DISCORD_TOKEN=your_token_here');
-    process.exit(1);
+    console.warn('\x1b[33m[WARNING] No valid DISCORD_TOKEN found in environment variables or .env!\x1b[0m');
+    console.warn('Set DISCORD_TOKEN in Render Environment Variables (or .env) to connect the bot to Discord.');
 }
 
 // Color Theme (Moody Dark / Gothic Aesthetic)
@@ -108,6 +107,9 @@ const client = new Client({
         }
     }
 });
+
+// Start Web Server & Render Keep-Alive / Health Endpoint immediately
+startWebServer(client);
 
 // Guard against disconnects, network timeouts, and unhandled errors
 client.on('error', err => {
@@ -4113,7 +4115,11 @@ client.on(Events.MessageCreate, async message => {
 });
 
 // Login
-client.login(TOKEN).catch(err => {
-    console.error('\x1b[31m[LOGIN FAILED]\x1b[0m Error connecting to Discord:');
-    console.error(err.message || err);
-});
+if (TOKEN && TOKEN !== 'YOUR_BOT_TOKEN_HERE') {
+    client.login(TOKEN).catch(err => {
+        console.error('\x1b[31m[LOGIN FAILED]\x1b[0m Error connecting to Discord:');
+        console.error(err.message || err);
+    });
+} else {
+    console.warn('[BOT] Discord login deferred until DISCORD_TOKEN is set.');
+}
