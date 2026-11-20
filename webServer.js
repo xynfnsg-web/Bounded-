@@ -17,7 +17,7 @@ function formatUptime(seconds) {
 
 function startWebServer(client) {
     const app = express();
-    const PORT = process.env.PORT || 3000;
+    const PORT = process.env.PORT || (process.env.SPACE_ID ? 7860 : 3000);
     const HOST = '0.0.0.0';
 
     // Serve static frontend

@@ -21,7 +21,7 @@ COPY . .
 ENV NODE_ENV=production
 
 # Expose port for health checks if assigned
-EXPOSE 3000
+EXPOSE 3000 7860
 
 # Start command
 CMD ["node", "index.js"]
