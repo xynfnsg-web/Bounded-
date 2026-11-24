@@ -1266,6 +1266,11 @@ client.once(Events.ClientReady, async c => {
                 .addSubcommand(sub =>
                     sub.setName('rewards')
                         .setDescription('View level milestone role rewards (GIF perms at lvl 5, etc.)')
+                )
+                .addSubcommand(sub =>
+                    sub.setName('setup')
+                        .setDescription('Set the announcement channel where members are tagged when leveling up')
+                        .addChannelOption(opt => opt.setName('channel').setDescription('Channel to send level-up alerts').setRequired(false))
                 ),
             new SlashCommandBuilder()
                 .setName('rank')
@@ -1546,6 +1551,7 @@ function getHelpCategoryEmbed(category, avatarUrl, serverName = null) {
                 `• \`${PREFIX}levels roles\` — View all role milestones and perks\n` +
                 `• \`${PREFIX}levels sync\` — Refresh and synchronize your milestone roles\n\n` +
                 `**Admin Commands**\n` +
+                `• \`${PREFIX}level setup [channel|off]\` *(or \`/levels setup\`)* — Set channel where members are @tagged when leveling up\n` +
                 `• \`${PREFIX}levels addxp <@user> <amount>\` — Grant activity XP to a member\n` +
                 `• \`${PREFIX}levels setlevel <@user> <level>\` — Manually set a member's level\n` +
                 `• \`${PREFIX}levels reset <@user>\` — Reset member activity data\n` +
@@ -1761,6 +1767,20 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (subCmd === 'rewards') {
                     const embed = levels.buildRoleRewardsEmbed(interaction.guild, COLORS.PRIMARY);
                     return interaction.reply({ embeds: [embed] });
+                }
+
+                if (subCmd === 'setup') {
+                    if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild) && !interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+                        return interaction.reply({ content: '⛔ Only Administrators or members with Manage Server can configure the level channel.', ephemeral: true });
+                    }
+                    const chan = interaction.options.getChannel('channel') || interaction.channel;
+                    if (!chan.isTextBased()) {
+                        return interaction.reply({ content: '⚠️ Please select a valid text channel.', ephemeral: true });
+                    }
+                    levels.setLevelChannel(interaction.guild.id, chan.id);
+                    return interaction.reply({
+                        content: `✅ Level announcements channel set to <#${chan.id}>! Whenever members level up, they will be tagged there with their new level.`
+                    });
                 }
 
                 // Default rank view
@@ -2196,8 +2216,27 @@ client.on(Events.MessageCreate, async message => {
                     )
                     .setTimestamp();
 
-                message.channel.send({ embeds: [levelUpEmbed] }).then(m => {
-                    setTimeout(() => m.delete().catch(() => {}), 15000);
+                // Check for configured level announcements channel (.level setup)
+                const levelChanId = levels.getLevelChannel(message.guild.id);
+                let targetAnnounceChan = message.channel;
+                let isCustomChannel = false;
+
+                if (levelChanId) {
+                    const configuredChan = message.guild.channels.cache.get(levelChanId) || await message.guild.channels.fetch(levelChanId).catch(() => null);
+                    if (configuredChan && configuredChan.isTextBased()) {
+                        targetAnnounceChan = configuredChan;
+                        isCustomChannel = true;
+                    }
+                }
+
+                targetAnnounceChan.send({
+                    content: `🎉 <@${userId}> reached **Level ${xpRes.newLevel}**!`,
+                    embeds: [levelUpEmbed]
+                }).then(m => {
+                    // Only auto-delete if sent in general chatting channels; keep persistent in dedicated level channel
+                    if (!isCustomChannel) {
+                        setTimeout(() => m.delete().catch(() => {}), 20000);
+                    }
                 }).catch(() => {});
             }
         }
@@ -2255,6 +2294,41 @@ client.on(Events.MessageCreate, async message => {
             if (sub === 'roles' || sub === 'rewards' || sub === 'perks') {
                 const embed = levels.buildRoleRewardsEmbed(message.guild, COLORS.PRIMARY);
                 return fastReply(message, { embeds: [embed] });
+            }
+
+            // Subcommand: Setup announcement channel (.level setup [channel|off])
+            if (sub === 'setup' || sub === 'setchannel' || sub === 'channel') {
+                const isAdmin = message.member.permissions.has(PermissionsBitField.Flags.ManageGuild) ||
+                                message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+                if (!isAdmin) {
+                    return fastReply(message, { embeds: [makeEmbed('Permission Denied ⛔', 'Only Administrators or members with Manage Server can configure the level announcement channel.', COLORS.DANGER)] });
+                }
+
+                const channelArg = args[1]?.toLowerCase();
+                if (channelArg === 'off' || channelArg === 'disable' || channelArg === 'unset') {
+                    levels.setLevelChannel(message.guild.id, null);
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Level Channel Disabled 🔄', 'Level-up announcements will now be sent in the active chat channel where members chat.', COLORS.PRIMARY, '📢')]
+                    });
+                }
+
+                let targetChannel = message.mentions.channels.first();
+                if (!targetChannel && args[1]) {
+                    const cleanId = args[1].replace(/[<#>]/g, '');
+                    targetChannel = message.guild.channels.cache.get(cleanId) || await message.guild.channels.fetch(cleanId).catch(() => null);
+                }
+                if (!targetChannel) {
+                    targetChannel = message.channel;
+                }
+
+                if (!targetChannel.isTextBased()) {
+                    return fastReply(message, { embeds: [makeEmbed('Invalid Channel ⚠️', 'Please provide a valid text channel for level-up announcements.', COLORS.WARNING)] });
+                }
+
+                levels.setLevelChannel(message.guild.id, targetChannel.id);
+                return fastReply(message, {
+                    embeds: [makeEmbed('Level Announcements Setup! 📢', `Level-up announcements channel set to <#${targetChannel.id}>!\nWhenever a member levels up, they will be @mentioned there with their new level and unlocked perks.`, COLORS.SUCCESS, '🎉')]
+                });
             }
 
             // Subcommand: Sync Roles (.levels sync)

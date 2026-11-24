@@ -53,12 +53,23 @@ function scheduleSave() {
 
 loadData();
 
-function ensureUser(guildId, userId) {
+function ensureGuild(guildId) {
     if (!data.guilds[guildId]) {
-        data.guilds[guildId] = { users: {} };
+        data.guilds[guildId] = { users: {}, settings: {} };
     }
-    if (!data.guilds[guildId].users[userId]) {
-        data.guilds[guildId].users[userId] = {
+    if (!data.guilds[guildId].settings) {
+        data.guilds[guildId].settings = {};
+    }
+    if (!data.guilds[guildId].users) {
+        data.guilds[guildId].users = {};
+    }
+    return data.guilds[guildId];
+}
+
+function ensureUser(guildId, userId) {
+    const guild = ensureGuild(guildId);
+    if (!guild.users[userId]) {
+        guild.users[userId] = {
             xp: 0,
             level: 0,
             totalXp: 0,
@@ -66,7 +77,19 @@ function ensureUser(guildId, userId) {
             lastXp: 0
         };
     }
-    return data.guilds[guildId].users[userId];
+    return guild.users[userId];
+}
+
+function setLevelChannel(guildId, channelId) {
+    const guild = ensureGuild(guildId);
+    guild.settings.levelChannelId = channelId || null;
+    scheduleSave();
+    return guild.settings.levelChannelId;
+}
+
+function getLevelChannel(guildId) {
+    const guild = data.guilds[guildId];
+    return guild?.settings?.levelChannelId || null;
 }
 
 /**
@@ -431,6 +454,8 @@ function buildRoleRewardsEmbed(guild, color = 0x18191C) {
 module.exports = {
     LEVEL_ROLES,
     getUserData,
+    setLevelChannel,
+    getLevelChannel,
     addMessageXp,
     addAdminXp,
     setAdminLevel,

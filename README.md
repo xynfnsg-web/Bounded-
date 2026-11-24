@@ -58,6 +58,7 @@ Members earn **15–25 XP per minute** by chatting in text channels. The more th
 | `.levels lb` | `.levels lb` / `.rboard` | View the server activity and levels leaderboard (or `/levels leaderboard`, `.lb levels`) |
 | `.levels roles` | `.levels roles` | View all level milestone rewards & permissions |
 | `.levels sync` | `.levels sync` | Sync your milestone roles if you advanced |
+| `.level setup [channel\|off]` | `.level setup #level-ups` | (Admin) Set channel where members are @tagged upon leveling up (or `/levels setup`) |
 | `.levels addxp <@user> <amt>` | `.levels addxp @user 500` | (Admin) Grant bonus activity XP to a member |
 | `.levels setlevel <@user> <lvl>` | `.levels setlevel @user 5` | (Admin) Manually set a member's level and sync roles |
 | `.levels reset <@user>` | `.levels reset @user` | (Admin) Reset a member's activity level and XP |
