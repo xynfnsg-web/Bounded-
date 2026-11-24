@@ -1555,6 +1555,7 @@ function getHelpCategoryEmbed(category, avatarUrl, serverName = null) {
                 `• \`${PREFIX}levels addxp <@user> <amount>\` — Grant activity XP to a member\n` +
                 `• \`${PREFIX}levels setlevel <@user> <level>\` — Manually set a member's level\n` +
                 `• \`${PREFIX}levels reset <@user>\` — Reset member activity data\n` +
+                `• \`${PREFIX}levels setrole <level> <@role|id|reset>\` — Set/override a milestone role for this server\n` +
                 `• \`${PREFIX}levels sync all\` — Re-sync milestone roles for all server members\n\n` +
                 `**Role Rewards & GIF Permissions**\n` +
                 `• **Level 5**: <@&1569136411821477948> — **GIF Permissions 🖼️** *(Send GIFs & Embed media)*\n` +
@@ -2189,55 +2190,77 @@ client.on(Events.MessageCreate, async message => {
         const isCommandAttempt = message.content.startsWith(PREFIX) || message.content.startsWith(',') || message.content.startsWith('/');
         if (!isCommandAttempt && message.content.trim().length >= 2) {
             const xpRes = levels.addMessageXp(message.guild.id, userId);
-            if (xpRes.earned && xpRes.leveledUp) {
-                if (message.member) {
-                    await levels.syncMemberRoles(message.member, xpRes.newLevel);
-                }
+            if (xpRes.earned) {
+                const member = message.member || await message.guild.members.fetch(userId).catch(() => null);
 
-                let rewardText = '';
-                const hasGifRole = xpRes.unlockedRoles.some(r => r.level === 5);
-                if (hasGifRole) {
-                    rewardText = `\n🎁 **PERK UNLOCKED:** <@&${levels.LEVEL_ROLES[5]}> — You now have **GIF Permissions**! 🖼️✨`;
-                } else if (xpRes.unlockedRoles.length > 0) {
-                    const roleMentions = xpRes.unlockedRoles.map(r => `<@&${r.roleId}>`).join(', ');
-                    rewardText = `\n🎁 **ROLE UNLOCKED:** ${roleMentions}! 🌟`;
-                }
+                if (xpRes.leveledUp) {
+                    const syncRes = member
+                        ? await levels.syncMemberRolesDetailed(member, xpRes.newLevel)
+                        : { added: [], failed: [] };
 
-                const levelUpEmbed = new EmbedBuilder()
-                    .setColor(COLORS.SUCCESS)
-                    .setAuthor({
-                        name: `${message.author.username} Leveled Up! 🎉`,
-                        iconURL: message.author.displayAvatarURL({ dynamic: true })
-                    })
-                    .setDescription(
-                        `GG <@${userId}>! You've advanced to **Level ${xpRes.newLevel}** by chatting! 🚀` +
-                        rewardText +
-                        `\n\n*Type \`${PREFIX}levels\` to inspect your rank card & perk milestones.*`
-                    )
-                    .setTimestamp();
+                    const levelRoles = levels.getLevelRoles(message.guild.id);
+                    const failedRoleIds = new Set(syncRes.failed.map(f => f.roleId));
+                    const grantedRoles = xpRes.unlockedRoles.filter(r => !failedRoleIds.has(r.roleId));
 
-                // Check for configured level announcements channel (.level setup)
-                const levelChanId = levels.getLevelChannel(message.guild.id);
-                let targetAnnounceChan = message.channel;
-                let isCustomChannel = false;
+                    let rewardText = '';
+                    const hasGifRole = grantedRoles.some(r => r.level === 5);
+                    if (hasGifRole) {
+                        rewardText = `\n🎁 **PERK UNLOCKED:** <@&${levelRoles[5]}> — You now have **GIF Permissions**! 🖼️✨`;
+                    } else if (grantedRoles.length > 0) {
+                        const roleMentions = grantedRoles.map(r => `<@&${r.roleId}>`).join(', ');
+                        rewardText = `\n🎁 **ROLE UNLOCKED:** ${roleMentions}! 🌟`;
+                    }
 
-                if (levelChanId) {
-                    const configuredChan = message.guild.channels.cache.get(levelChanId) || await message.guild.channels.fetch(levelChanId).catch(() => null);
-                    if (configuredChan && configuredChan.isTextBased()) {
-                        targetAnnounceChan = configuredChan;
-                        isCustomChannel = true;
+                    if (syncRes.failed.length > 0) {
+                        const failLines = syncRes.failed.map(f => `• **Level ${f.level}** (<@&${f.roleId}>): ${f.reason}`).join('\n');
+                        rewardText += `\n\n⚠️ **Role Assignment Issue:**\n${failLines}`;
+                    }
+
+                    const levelUpEmbed = new EmbedBuilder()
+                        .setColor(COLORS.SUCCESS)
+                        .setAuthor({
+                            name: `${message.author.username} Leveled Up! 🎉`,
+                            iconURL: message.author.displayAvatarURL({ dynamic: true })
+                        })
+                        .setDescription(
+                            `GG <@${userId}>! You've advanced to **Level ${xpRes.newLevel}** by chatting! 🚀` +
+                            rewardText +
+                            `\n\n*Type \`${PREFIX}levels\` to inspect your rank card & perk milestones.*`
+                        )
+                        .setTimestamp();
+
+                    // Check for configured level announcements channel (.level setup)
+                    const levelChanId = levels.getLevelChannel(message.guild.id);
+                    let targetAnnounceChan = message.channel;
+                    let isCustomChannel = false;
+
+                    if (levelChanId) {
+                        const configuredChan = message.guild.channels.cache.get(levelChanId) || await message.guild.channels.fetch(levelChanId).catch(() => null);
+                        if (configuredChan && configuredChan.isTextBased()) {
+                            targetAnnounceChan = configuredChan;
+                            isCustomChannel = true;
+                        }
+                    }
+
+                    targetAnnounceChan.send({
+                        content: `🎉 <@${userId}> reached **Level ${xpRes.newLevel}**!`,
+                        embeds: [levelUpEmbed]
+                    }).then(m => {
+                        // Only auto-delete if sent in general chatting channels; keep persistent in dedicated level channel
+                        if (!isCustomChannel) {
+                            setTimeout(() => m.delete().catch(() => {}), 20000);
+                        }
+                    }).catch(() => {});
+                } else if (xpRes.newLevel >= 5 && member) {
+                    // Catch-up sync if a member already passed a milestone without receiving the role
+                    const levelRoles = levels.getLevelRoles(message.guild.id);
+                    const hasMissingRole = Object.entries(levelRoles).some(([lvlStr, roleId]) => {
+                        return xpRes.newLevel >= parseInt(lvlStr, 10) && !member.roles.cache.has(roleId);
+                    });
+                    if (hasMissingRole) {
+                        await levels.syncMemberRoles(member, xpRes.newLevel).catch(() => {});
                     }
                 }
-
-                targetAnnounceChan.send({
-                    content: `🎉 <@${userId}> reached **Level ${xpRes.newLevel}**!`,
-                    embeds: [levelUpEmbed]
-                }).then(m => {
-                    // Only auto-delete if sent in general chatting channels; keep persistent in dedicated level channel
-                    if (!isCustomChannel) {
-                        setTimeout(() => m.delete().catch(() => {}), 20000);
-                    }
-                }).catch(() => {});
             }
         }
 
@@ -2331,33 +2354,96 @@ client.on(Events.MessageCreate, async message => {
                 });
             }
 
+            // Subcommand: Set Milestone Role (.levels setrole <level> <@role|roleId|reset>) - Admin only
+            if (sub === 'setrole' || sub === 'set-role') {
+                if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return fastReply(message, { embeds: [makeEmbed('Permission Denied ⛔', 'Only Administrators can configure milestone roles.', COLORS.DANGER)] });
+                }
+                const targetLvl = parseInt(args[1], 10);
+                const validLevels = Object.keys(levels.LEVEL_ROLES).join(', ');
+                if (isNaN(targetLvl) || !Object.prototype.hasOwnProperty.call(levels.LEVEL_ROLES, targetLvl)) {
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Invalid Milestone Level ⚠️', `Usage: \`${PREFIX}levels setrole <level> <@role|roleId|reset>\`\nValid milestone levels: \`${validLevels}\``, COLORS.WARNING)]
+                    });
+                }
+
+                const roleArg = args[2]?.toLowerCase();
+                if (!roleArg) {
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Invalid Usage ⚠️', `Usage: \`${PREFIX}levels setrole ${targetLvl} <@role|roleId|reset>\``, COLORS.WARNING)]
+                    });
+                }
+
+                if (roleArg === 'reset' || roleArg === 'default') {
+                    const updated = levels.setLevelRole(message.guild.id, targetLvl, null);
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Milestone Role Reset 🔄', `Reset **Level ${targetLvl}** back to default role <@&${updated[targetLvl]}>.`, COLORS.PRIMARY, '🎖️')]
+                    });
+                }
+
+                const role = message.mentions.roles.first() ||
+                    message.guild.roles.cache.get(args[2].replace(/[<@&>]/g, '')) ||
+                    await message.guild.roles.fetch(args[2].replace(/[<@&>]/g, '')).catch(() => null);
+
+                if (!role) {
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Role Not Found ⚠️', `Could not find that role in this server. Mention a role or paste a valid role ID.`, COLORS.WARNING)]
+                    });
+                }
+
+                levels.setLevelRole(message.guild.id, targetLvl, role.id);
+                const editableNote = role.editable
+                    ? ''
+                    : `\n\n⚠️ **Heads up:** "${role.name}" is currently above or equal to my highest role, so move my role above it in **Server Settings > Roles** before I can assign it!`;
+
+                return fastReply(message, {
+                    embeds: [makeEmbed('Milestone Role Updated 🎯', `**Level ${targetLvl}** will now automatically award <@&${role.id}>!${editableNote}`, COLORS.SUCCESS, '🎖️')]
+                });
+            }
+
             // Subcommand: Sync Roles (.levels sync)
             if (sub === 'sync' || sub === 'syncroles') {
                 const isAdmin = message.member.permissions.has(PermissionsBitField.Flags.ManageRoles) ||
                                 message.member.permissions.has(PermissionsBitField.Flags.Administrator);
                 if (args[1] === 'all' && isAdmin) {
                     let syncedCount = 0;
+                    const failReasons = new Set();
                     const members = await message.guild.members.fetch().catch(() => message.guild.members.cache);
                     for (const [, m] of members) {
                         if (m.user.bot) continue;
                         const uData = levels.getUserData(message.guild.id, m.id);
                         if (uData.level >= 5) {
-                            const added = await levels.syncMemberRoles(m, uData.level);
+                            const { added, failed } = await levels.syncMemberRolesDetailed(m, uData.level);
                             if (added.length > 0) syncedCount++;
+                            for (const f of failed) failReasons.add(`Level ${f.level}: ${f.reason}`);
                         }
                     }
+                    const failText = failReasons.size > 0
+                        ? `\n\n⚠️ **Some roles could not be assigned:**\n${[...failReasons].map(r => `• ${r}`).join('\n')}`
+                        : '';
                     return fastReply(message, {
-                        embeds: [makeEmbed('Roles Synchronized 🔄', `Successfully synchronized level milestone roles for **${syncedCount}** member(s).`, COLORS.SUCCESS, '✅')]
+                        embeds: [makeEmbed('Roles Synchronized 🔄', `Successfully synchronized level milestone roles for **${syncedCount}** member(s).${failText}`, failReasons.size > 0 ? COLORS.WARNING : COLORS.SUCCESS, '✅')]
                     });
                 }
 
                 // Self sync
                 const selfData = levels.getUserData(message.guild.id, userId);
-                const added = await levels.syncMemberRoles(message.member, selfData.level);
-                if (added.length > 0) {
-                    const mentions = added.map(r => `<@&${r.roleId}>`).join(', ');
+                const { added, failed } = await levels.syncMemberRolesDetailed(message.member, selfData.level);
+                if (added.length > 0 || failed.length > 0) {
+                    const parts = [];
+                    if (added.length > 0) {
+                        parts.push(`Assigned: ${added.map(r => `<@&${r.roleId}>`).join(', ')}`);
+                    }
+                    if (failed.length > 0) {
+                        parts.push(`⚠️ **Could not assign:**\n${failed.map(f => `• **Level ${f.level}** (<@&${f.roleId}>): ${f.reason}`).join('\n')}`);
+                    }
                     return fastReply(message, {
-                        embeds: [makeEmbed('Roles Updated 🔄', `Synchronized your level roles! Assigned: ${mentions}`, COLORS.SUCCESS, '🎉')]
+                        embeds: [makeEmbed(
+                            failed.length > 0 && added.length === 0 ? 'Role Sync Failed ⚠️' : 'Roles Updated 🔄',
+                            parts.join('\n\n'),
+                            failed.length > 0 ? COLORS.WARNING : COLORS.SUCCESS,
+                            failed.length > 0 ? '⚠️' : '🎉'
+                        )]
                     });
                 } else {
                     return fastReply(message, {
@@ -2377,11 +2463,15 @@ client.on(Events.MessageCreate, async message => {
                     return fastReply(message, { embeds: [makeEmbed('Invalid Usage ⚠️', `Usage: \`${PREFIX}levels addxp <@user> <amount>\``, COLORS.WARNING)] });
                 }
                 const res = levels.addAdminXp(message.guild.id, target.id, amount);
+                let syncNote = '';
                 if (res.leveledUp) {
-                    await levels.syncMemberRoles(target, res.newLevel);
+                    const syncRes = await levels.syncMemberRolesDetailed(target, res.newLevel);
+                    if (syncRes.failed.length > 0) {
+                        syncNote = `\n\n⚠️ **Role Sync Issue:**\n${syncRes.failed.map(f => `• Level ${f.level} (<@&${f.roleId}>): ${f.reason}`).join('\n')}`;
+                    }
                 }
                 return fastReply(message, {
-                    embeds: [makeEmbed('XP Granted ⭐', `Added **${amount.toLocaleString()} XP** to <@${target.id}>!\nNew Level: **${res.newLevel}** • Total XP: \`${res.user.totalXp.toLocaleString()} XP\``, COLORS.SUCCESS, '✨')]
+                    embeds: [makeEmbed('XP Granted ⭐', `Added **${amount.toLocaleString()} XP** to <@${target.id}>!\nNew Level: **${res.newLevel}** • Total XP: \`${res.user.totalXp.toLocaleString()} XP\`${syncNote}`, COLORS.SUCCESS, '✨')]
                 });
             }
 
@@ -2396,9 +2486,12 @@ client.on(Events.MessageCreate, async message => {
                     return fastReply(message, { embeds: [makeEmbed('Invalid Usage ⚠️', `Usage: \`${PREFIX}levels setlevel <@user> <level>\``, COLORS.WARNING)] });
                 }
                 const res = levels.setAdminLevel(message.guild.id, target.id, targetLvl);
-                await levels.syncMemberRoles(target, targetLvl);
+                const syncRes = await levels.syncMemberRolesDetailed(target, targetLvl);
+                const syncStatus = syncRes.failed.length > 0
+                    ? `⚠️ **Role Sync Issue:**\n${syncRes.failed.map(f => `• Level ${f.level} (<@&${f.roleId}>): ${f.reason}`).join('\n')}`
+                    : 'Milestone roles synchronized!';
                 return fastReply(message, {
-                    embeds: [makeEmbed('Level Set 🎯', `Set <@${target.id}> to **Level ${targetLvl}**!\nTotal XP scaled: \`${res.user.totalXp.toLocaleString()} XP\`\nMilestone roles synchronized!`, COLORS.SUCCESS, '🎖️')]
+                    embeds: [makeEmbed('Level Set 🎯', `Set <@${target.id}> to **Level ${targetLvl}**!\nTotal XP scaled: \`${res.user.totalXp.toLocaleString()} XP\`\n${syncStatus}`, syncRes.failed.length > 0 ? COLORS.WARNING : COLORS.SUCCESS, '🎖️')]
                 });
             }
 

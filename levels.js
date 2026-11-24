@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 
 const DB_PATH = path.join(__dirname, 'levels.json');
 let data = { guilds: {} };
@@ -92,6 +92,29 @@ function getLevelChannel(guildId) {
     return guild?.settings?.levelChannelId || null;
 }
 
+function getLevelRoles(guildId) {
+    const overrides = data.guilds[guildId]?.settings?.levelRoles || {};
+    return { ...LEVEL_ROLES, ...overrides };
+}
+
+function setLevelRole(guildId, level, roleId) {
+    const reqLvl = parseInt(level, 10);
+    if (!Object.prototype.hasOwnProperty.call(LEVEL_ROLES, reqLvl)) {
+        return null;
+    }
+    const guild = ensureGuild(guildId);
+    if (!guild.settings.levelRoles) {
+        guild.settings.levelRoles = {};
+    }
+    if (!roleId) {
+        delete guild.settings.levelRoles[reqLvl];
+    } else {
+        guild.settings.levelRoles[reqLvl] = roleId;
+    }
+    scheduleSave();
+    return getLevelRoles(guildId);
+}
+
 /**
  * XP needed to advance from level to level + 1
  * Standard Discord curve: 5 * (lvl ^ 2) + 50 * lvl + 100
@@ -162,7 +185,8 @@ function addMessageXp(guildId, userId) {
     const unlockedRoles = [];
 
     if (leveledUp) {
-        for (const [lvlStr, roleId] of Object.entries(LEVEL_ROLES)) {
+        const levelRoles = getLevelRoles(guildId);
+        for (const [lvlStr, roleId] of Object.entries(levelRoles)) {
             const reqLvl = parseInt(lvlStr, 10);
             if (oldLevel < reqLvl && newLevel >= reqLvl) {
                 unlockedRoles.push({ level: reqLvl, roleId });
@@ -206,7 +230,8 @@ function addAdminXp(guildId, userId, amount) {
     const newLevel = user.level;
     const unlockedRoles = [];
     if (leveledUp) {
-        for (const [lvlStr, roleId] of Object.entries(LEVEL_ROLES)) {
+        const levelRoles = getLevelRoles(guildId);
+        for (const [lvlStr, roleId] of Object.entries(levelRoles)) {
             const reqLvl = parseInt(lvlStr, 10);
             if (oldLevel < reqLvl && newLevel >= reqLvl) {
                 unlockedRoles.push({ level: reqLvl, roleId });
@@ -231,7 +256,8 @@ function setAdminLevel(guildId, userId, targetLevel) {
     user.totalXp = totalXpForLevel(targetLevel);
 
     const unlockedRoles = [];
-    for (const [lvlStr, roleId] of Object.entries(LEVEL_ROLES)) {
+    const levelRoles = getLevelRoles(guildId);
+    for (const [lvlStr, roleId] of Object.entries(levelRoles)) {
         const reqLvl = parseInt(lvlStr, 10);
         if (oldLevel < reqLvl && targetLevel >= reqLvl) {
             unlockedRoles.push({ level: reqLvl, roleId });
@@ -257,27 +283,69 @@ function resetUserData(guildId, userId) {
 }
 
 /**
- * Synchronize all deserved level roles for a member
+ * Synchronize all deserved level roles for a member with detailed diagnostics
  */
-async function syncMemberRoles(member, level) {
-    if (!member || !member.roles || !member.guild) return [];
-    const addedRoles = [];
+async function syncMemberRolesDetailed(member, level) {
+    if (!member || !member.roles || !member.guild) {
+        return { added: [], failed: [] };
+    }
 
-    for (const [lvlStr, roleId] of Object.entries(LEVEL_ROLES)) {
+    if (member.partial) {
+        await member.fetch().catch(() => null);
+    }
+
+    const added = [];
+    const failed = [];
+    const levelRoles = getLevelRoles(member.guild.id);
+    const me = member.guild.members.me || await member.guild.members.fetchMe().catch(() => null);
+    const hasManageRoles = me ? me.permissions.has(PermissionsBitField.Flags.ManageRoles) : true;
+
+    for (const [lvlStr, roleId] of Object.entries(levelRoles)) {
         const reqLvl = parseInt(lvlStr, 10);
-        if (level >= reqLvl) {
-            if (!member.roles.cache.has(roleId)) {
-                try {
-                    await member.roles.add(roleId);
-                    addedRoles.push({ level: reqLvl, roleId });
-                } catch (err) {
-                    console.warn(`[LEVELS] Could not assign role ${roleId} to ${member.user?.tag || member.id}:`, err.message);
-                }
-            }
+        if (level < reqLvl || member.roles.cache.has(roleId)) {
+            continue;
+        }
+
+        const role = member.guild.roles.cache.get(roleId) || await member.guild.roles.fetch(roleId).catch(() => null);
+        if (!role) {
+            const reason = 'Role not found in this server (check role ID or run .levels setrole)';
+            console.warn(`[LEVELS] Could not assign role ${roleId} to ${member.user?.tag || member.id}: ${reason}`);
+            failed.push({ level: reqLvl, roleId, reason });
+            continue;
+        }
+
+        if (!hasManageRoles) {
+            const reason = 'Bot is missing the Manage Roles permission';
+            console.warn(`[LEVELS] Could not assign role ${roleId} to ${member.user?.tag || member.id}: ${reason}`);
+            failed.push({ level: reqLvl, roleId, reason });
+            continue;
+        }
+
+        if (!role.editable) {
+            const reason = `Role "${role.name}" is higher than or equal to the bot's highest role — move the bot's role above it in Server Settings > Roles`;
+            console.warn(`[LEVELS] Could not assign role ${roleId} to ${member.user?.tag || member.id}: ${reason}`);
+            failed.push({ level: reqLvl, roleId, reason });
+            continue;
+        }
+
+        try {
+            await member.roles.add(role);
+            added.push({ level: reqLvl, roleId });
+        } catch (err) {
+            console.warn(`[LEVELS] Could not assign role ${roleId} to ${member.user?.tag || member.id}:`, err.message);
+            failed.push({ level: reqLvl, roleId, reason: err.message });
         }
     }
 
-    return addedRoles;
+    return { added, failed };
+}
+
+/**
+ * Synchronize all deserved level roles for a member
+ */
+async function syncMemberRoles(member, level) {
+    const { added } = await syncMemberRolesDetailed(member, level);
+    return added;
 }
 
 /**
@@ -344,7 +412,8 @@ function buildRankEmbed(targetUser, member, rankInfo, serverName, color = 0x1819
     const progressBar = generateProgressBar(xp, neededXp, 12);
 
     // Determine role rewards status
-    const roleLines = Object.entries(LEVEL_ROLES).map(([lvlStr, roleId]) => {
+    const levelRoles = getLevelRoles(member?.guild?.id);
+    const roleLines = Object.entries(levelRoles).map(([lvlStr, roleId]) => {
         const reqLvl = parseInt(lvlStr, 10);
         const unlocked = level >= reqLvl;
         const icon = unlocked ? '✅' : '🔒';
@@ -354,7 +423,7 @@ function buildRankEmbed(targetUser, member, rankInfo, serverName, color = 0x1819
 
     // Find next milestone
     let nextMilestone = null;
-    for (const [lvlStr, roleId] of Object.entries(LEVEL_ROLES)) {
+    for (const [lvlStr, roleId] of Object.entries(levelRoles)) {
         const reqLvl = parseInt(lvlStr, 10);
         if (level < reqLvl) {
             const xpLeft = totalXpForLevel(reqLvl) - totalXp;
@@ -429,7 +498,8 @@ function buildLeaderboardEmbed(guild, leaderboard, authorRank, authorLevel, colo
  * Build level roles summary embed
  */
 function buildRoleRewardsEmbed(guild, color = 0x18191C) {
-    const roleLines = Object.entries(LEVEL_ROLES).map(([lvlStr, roleId]) => {
+    const levelRoles = getLevelRoles(guild?.id);
+    const roleLines = Object.entries(levelRoles).map(([lvlStr, roleId]) => {
         const reqLvl = parseInt(lvlStr, 10);
         const perkNote = reqLvl === 5 ? ' — **GIF Permissions 🖼️** *(Send GIFs & Embed media)*' : '';
         return `• **Level ${reqLvl}**: <@&${roleId}>${perkNote}`;
@@ -445,7 +515,7 @@ function buildRoleRewardsEmbed(guild, color = 0x18191C) {
         .setDescription(
             `The more you chat, the higher your level! Unlock exclusive roles and permissions automatically as you reach activity milestones:\n\n` +
             roleLines + '\n\n' +
-            `*💡 Tip: When you reach **Level 5**, you automatically get role <@&${LEVEL_ROLES[5]}> with GIF permissions!*`
+            `*💡 Tip: When you reach **Level 5**, you automatically get role <@&${levelRoles[5]}> with GIF permissions!*`
         )
         .setFooter({ text: 'Check your current rank anytime with .levels or .rank' })
         .setTimestamp();
@@ -453,6 +523,8 @@ function buildRoleRewardsEmbed(guild, color = 0x18191C) {
 
 module.exports = {
     LEVEL_ROLES,
+    getLevelRoles,
+    setLevelRole,
     getUserData,
     setLevelChannel,
     getLevelChannel,
@@ -461,6 +533,7 @@ module.exports = {
     setAdminLevel,
     resetUserData,
     syncMemberRoles,
+    syncMemberRolesDetailed,
     getLeaderboard,
     getUserRank,
     xpForNextLevel,
