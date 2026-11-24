@@ -619,6 +619,7 @@
         <div class="commands-toolbar">
           <div class="category-tabs">
             <button class="tab-btn active" onclick="filterCategory('all', this)">All</button>
+            <button class="tab-btn" onclick="filterCategory('levels', this)">Levels & XP 🏆</button>
             <button class="tab-btn" onclick="filterCategory('voice', this)">Voice & AFK 🎵</button>
             <button class="tab-btn" onclick="filterCategory('casino', this)">Casino & Economy 🎲</button>
             <button class="tab-btn" onclick="filterCategory('mod', this)">Moderation & Shield 🛡️</button>
@@ -656,6 +657,14 @@
 
   <script>
     const COMMANDS = [
+      { name: ".levels [@user]", category: "levels", desc: "View your personal rank card, current level, XP progress bar, and unlocked perk milestones.", aliases: ".level, .rank, /levels" },
+      { name: ".levels lb", category: "levels", desc: "View the server activity & levels leaderboard of top chatters.", aliases: ".levels top, .rboard, .lb levels" },
+      { name: ".levels roles", category: "levels", desc: "View all server level milestones (Level 5 GIF perms, 15, 25, 50, 100, 200).", aliases: ".levels rewards" },
+      { name: ".levels sync", category: "levels", desc: "Synchronize your earned level milestone roles in the server.", aliases: ".levels syncroles" },
+      { name: ".levels addxp <@user> <amt>", category: "levels", desc: "Admin command to grant activity XP to a member.", aliases: ".levels givexp" },
+      { name: ".levels setlevel <@user> <lvl>", category: "levels", desc: "Admin command to manually set a member's level and sync roles.", aliases: "None" },
+      { name: ".levels reset <@user>", category: "levels", desc: "Admin command to reset a member's activity level and XP.", aliases: "None" },
+
       { name: ".vcafk [channel|off]", category: "voice", desc: "Stay in the voice channel 24/7 forever until disconnected. Auto-reconnects on reboot.", aliases: ".247, .afkvc, .stay" },
       { name: ".play <query/URL>", category: "voice", desc: "Search and stream high-fidelity audio from YouTube, Spotify, or SoundCloud.", aliases: ".p" },
       { name: ".skip", category: "voice", desc: "Vote skip or force skip to the next track in the queue.", aliases: ".s, .next" },

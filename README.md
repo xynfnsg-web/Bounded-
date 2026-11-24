@@ -49,6 +49,30 @@ Every member receives **$1,000 starter cash**. All games are rebalanced for fair
 
 ---
 
+### 🏆 Activity & Levels System (Slash: `/levels`, Prefix: `.` or `,`)
+Members earn **15–25 XP per minute** by chatting in text channels. The more they chat, the higher their level, unlocking exclusive milestone roles and permissions automatically!
+
+| Command | Example | Description |
+| :--- | :--- | :--- |
+| `.levels [@user]` | `.levels` / `.rank` | View personal rank card with Level, XP progress bar, rank, and perks (or `/levels rank`, `/rank`) |
+| `.levels lb` | `.levels lb` / `.rboard` | View the server activity and levels leaderboard (or `/levels leaderboard`, `.lb levels`) |
+| `.levels roles` | `.levels roles` | View all level milestone rewards & permissions |
+| `.levels sync` | `.levels sync` | Sync your milestone roles if you advanced |
+| `.levels addxp <@user> <amt>` | `.levels addxp @user 500` | (Admin) Grant bonus activity XP to a member |
+| `.levels setlevel <@user> <lvl>` | `.levels setlevel @user 5` | (Admin) Manually set a member's level and sync roles |
+| `.levels reset <@user>` | `.levels reset @user` | (Admin) Reset a member's activity level and XP |
+| `.levels sync all` | `.levels sync all` | (Admin) Synchronize milestone roles across all server members |
+
+#### 🎁 Level Role Rewards & Perks
+- **Level 5**: Role ID `1569136411821477948` — **GIF Permissions 🖼️** *(Send GIFs & Embed media)*
+- **Level 15**: Role ID `1569136413465645137`
+- **Level 25**: Role ID `1569136416221302865`
+- **Level 50**: Role ID `1569136417681051689`
+- **Level 100**: Role ID `1569136418859655168`
+- **Level 200**: Role ID `1569136421644537887`
+
+---
+
 ### 🎵 Voice Channel Music Commands (Prefix: `,`)
 | Command | Example | Description |
 | :--- | :--- | :--- |

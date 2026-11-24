@@ -13,7 +13,8 @@ const {
     ComponentType,
     ChannelType,
     StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder
+    StringSelectMenuOptionBuilder,
+    SlashCommandBuilder
 } = require('discord.js');
 const { DisTube } = require('distube');
 const { SpotifyPlugin } = require('@distube/spotify');
@@ -28,6 +29,7 @@ const tickets = require('./tickets');
 const guildSettings = require('./guildSettings');
 const tempVoice = require('./tempVoice');
 const vcAfk = require('./vcAfk');
+const levels = require('./levels');
 const { startWebServer } = require('./webServer');
 
 // Configuration
@@ -1236,7 +1238,7 @@ function updateBotPresence() {
 }
 
 // Ready Event
-client.once(Events.ClientReady, c => {
+client.once(Events.ClientReady, async c => {
     console.log(`\x1b[32m[READY] Logged in as ${c.user.tag}\x1b[0m`);
     console.log(`[INFO] Bot prefix is: "${PREFIX}"`);
     console.log(`[INFO] Connected to ${c.guilds.cache.size} server(s):`);
@@ -1245,6 +1247,43 @@ client.once(Events.ClientReady, c => {
     });
 
     updateBotPresence();
+
+    // Register Slash Commands for /levels, /rank, /level
+    try {
+        const slashCommands = [
+            new SlashCommandBuilder()
+                .setName('levels')
+                .setDescription('Check server activity levels, rank card, or view the leaderboard')
+                .addSubcommand(sub =>
+                    sub.setName('rank')
+                        .setDescription('View your or another member\'s rank and level progress')
+                        .addUserOption(opt => opt.setName('user').setDescription('The user to inspect').setRequired(false))
+                )
+                .addSubcommand(sub =>
+                    sub.setName('leaderboard')
+                        .setDescription('View the server activity & levels leaderboard')
+                )
+                .addSubcommand(sub =>
+                    sub.setName('rewards')
+                        .setDescription('View level milestone role rewards (GIF perms at lvl 5, etc.)')
+                ),
+            new SlashCommandBuilder()
+                .setName('rank')
+                .setDescription('View your or another member\'s level, XP, and rank card')
+                .addUserOption(opt => opt.setName('user').setDescription('The user to inspect').setRequired(false)),
+            new SlashCommandBuilder()
+                .setName('level')
+                .setDescription('View your or another member\'s level, XP, and rank card')
+                .addUserOption(opt => opt.setName('user').setDescription('The user to inspect').setRequired(false))
+        ];
+
+        if (c.application) {
+            await c.application.commands.set(slashCommands);
+            console.log('\x1b[32m[SLASH COMMANDS] Registered /levels, /rank, and /level application commands\x1b[0m');
+        }
+    } catch (slashErr) {
+        console.error('[SLASH COMMANDS] Could not register application commands:', slashErr.message || slashErr);
+    }
 
     // Auto-reconnect active 24/7 VC AFK connections across guilds
     const activeAfkGuilds = vcAfk.getAllActiveVcAfk();
@@ -1494,6 +1533,35 @@ function getHelpCategoryEmbed(category, avatarUrl, serverName = null) {
             .setTimestamp();
     }
 
+    if (category === 'levels') {
+        return new EmbedBuilder()
+            .setColor(COLORS.GOLD)
+            .setAuthor({ name: `${sName} • Activity & Levels 🏆`, iconURL: avatarUrl })
+            .setTitle('🎖️ Chat Levels & Milestone Perks')
+            .setDescription(
+                `Chat more to level up! Earn 15–25 XP per minute by participating in server channels. Milestone roles and server perks unlock automatically.\n\n` +
+                `**Member Commands**\n` +
+                `• \`${PREFIX}levels [@user]\` *(aliases: \`${PREFIX}rank\`, \`${PREFIX}level\`, \`/levels\`)* — View rank card, level, and XP progress bar\n` +
+                `• \`${PREFIX}levels lb\` *(aliases: \`${PREFIX}levels top\`, \`${PREFIX}levels leaderboard\`)* — Server top chatters leaderboard\n` +
+                `• \`${PREFIX}levels roles\` — View all role milestones and perks\n` +
+                `• \`${PREFIX}levels sync\` — Refresh and synchronize your milestone roles\n\n` +
+                `**Admin Commands**\n` +
+                `• \`${PREFIX}levels addxp <@user> <amount>\` — Grant activity XP to a member\n` +
+                `• \`${PREFIX}levels setlevel <@user> <level>\` — Manually set a member's level\n` +
+                `• \`${PREFIX}levels reset <@user>\` — Reset member activity data\n` +
+                `• \`${PREFIX}levels sync all\` — Re-sync milestone roles for all server members\n\n` +
+                `**Role Rewards & GIF Permissions**\n` +
+                `• **Level 5**: <@&1569136411821477948> — **GIF Permissions 🖼️** *(Send GIFs & Embed media)*\n` +
+                `• **Level 15**: <@&1569136413465645137>\n` +
+                `• **Level 25**: <@&1569136416221302865>\n` +
+                `• **Level 50**: <@&1569136417681051689>\n` +
+                `• **Level 100**: <@&1569136418859655168>\n` +
+                `• **Level 200**: <@&1569136421644537887>`
+            )
+            .setFooter({ text: `Page: Levels & Activity • Prefix: ${PREFIX}` })
+            .setTimestamp();
+    }
+
     if (category === 'utility') {
         return new EmbedBuilder()
             .setColor(COLORS.EMERALD)
@@ -1527,6 +1595,7 @@ function getHelpCategoryEmbed(category, avatarUrl, serverName = null) {
             `Welcome to **${sName}**! Use the **dropdown menu** or **buttons** below to browse commands by category.\n\n` +
             `**Command Prefix:** \`${PREFIX}\` *(dot)*\n\n` +
             `📂 **Available Categories:**\n` +
+            `• 🏆 **Activity & Levels** — Chat activity XP, rank card, leaderboard, Level 5 GIF perms\n` +
             `• 🎲 **Casino & Economy** — VIP Blackjack, Slots, Coinflip, Craps, Roulette, Rob, Bal\n` +
             `• 🎵 **Voice Music** — YT/Spotify/SoundCloud streaming, Queue, Volume, Controls\n` +
             `• 🛡️ **Moderation Suite** — Warns, Timeouts, Purge, Bans, Hardban & Alt Shield\n` +
@@ -1534,7 +1603,7 @@ function getHelpCategoryEmbed(category, avatarUrl, serverName = null) {
             `• 💬 **Utility & Server** — Snipe (\`.s\`), AFK tracking, media-only channels`
         )
         .addFields(
-            { name: '⚡ Quick Shortcuts', value: `\`${PREFIX}help casino\` • \`${PREFIX}help music\` • \`${PREFIX}help mod\` • \`${PREFIX}help tickets\` • \`${PREFIX}help utility\``, inline: false }
+            { name: '⚡ Quick Shortcuts', value: `\`${PREFIX}help levels\` • \`${PREFIX}help casino\` • \`${PREFIX}help music\` • \`${PREFIX}help mod\` • \`${PREFIX}help tickets\` • \`${PREFIX}help utility\``, inline: false }
         )
         .setFooter({ text: 'Select a category below or click buttons to navigate' })
         .setTimestamp();
@@ -1551,6 +1620,12 @@ function getHelpActionRows(currentCategory = 'overview') {
                 .setDescription('View the main dashboard and bot features')
                 .setEmoji('✨')
                 .setDefault(currentCategory === 'overview'),
+            new StringSelectMenuOptionBuilder()
+                .setLabel('Activity & Levels')
+                .setValue('levels')
+                .setDescription('Level progression, rank card, leaderboard & GIF perms')
+                .setEmoji('🏆')
+                .setDefault(currentCategory === 'levels'),
             new StringSelectMenuOptionBuilder()
                 .setLabel('Casino & Gambling')
                 .setValue('casino')
@@ -1583,12 +1658,17 @@ function getHelpActionRows(currentCategory = 'overview') {
                 .setDefault(currentCategory === 'utility')
         );
 
-    const buttons = new ActionRowBuilder().addComponents(
+    const buttons1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('help_btn_overview')
             .setLabel('Overview')
             .setEmoji('🏠')
             .setStyle(currentCategory === 'overview' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('help_btn_levels')
+            .setLabel('Levels')
+            .setEmoji('🏆')
+            .setStyle(currentCategory === 'levels' ? ButtonStyle.Primary : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('help_btn_casino')
             .setLabel('Casino')
@@ -1603,17 +1683,26 @@ function getHelpActionRows(currentCategory = 'overview') {
             .setCustomId('help_btn_mod')
             .setLabel('Mod')
             .setEmoji('🛡️')
-            .setStyle(currentCategory === 'mod' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+            .setStyle(currentCategory === 'mod' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    );
+
+    const buttons2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('help_btn_tickets')
             .setLabel('Tickets')
             .setEmoji('🎫')
-            .setStyle(currentCategory === 'tickets' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+            .setStyle(currentCategory === 'tickets' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('help_btn_utility')
+            .setLabel('Utility')
+            .setEmoji('💬')
+            .setStyle(currentCategory === 'utility' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     );
 
     return [
         new ActionRowBuilder().addComponents(selectMenu),
-        buttons
+        buttons1,
+        buttons2
     ];
 }
 
@@ -1651,6 +1740,39 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 // ----------------- INTERACTIVE TICKET & HELP LISTENER -----------------
 client.on(Events.InteractionCreate, async interaction => {
     try {
+        // Handle Slash Commands (/levels, /rank, /level)
+        if (interaction.isChatInputCommand()) {
+            const { commandName } = interaction;
+            if (commandName === 'levels' || commandName === 'rank' || commandName === 'level') {
+                if (!interaction.guild) {
+                    return interaction.reply({ content: '❌ Level commands can only be used inside a server!', ephemeral: true });
+                }
+
+                const subCmd = interaction.options.getSubcommand(false);
+
+                if (subCmd === 'leaderboard') {
+                    const lb = levels.getLeaderboard(interaction.guild.id, 10);
+                    const authorRank = levels.getUserRank(interaction.guild.id, interaction.user.id);
+                    const authorData = levels.getUserData(interaction.guild.id, interaction.user.id);
+                    const embed = levels.buildLeaderboardEmbed(interaction.guild, lb, authorRank.rank, authorData.level, COLORS.GOLD);
+                    return interaction.reply({ embeds: [embed] });
+                }
+
+                if (subCmd === 'rewards') {
+                    const embed = levels.buildRoleRewardsEmbed(interaction.guild, COLORS.PRIMARY);
+                    return interaction.reply({ embeds: [embed] });
+                }
+
+                // Default rank view
+                const targetUser = interaction.options.getUser('user') || interaction.user;
+                const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+                const userData = levels.getUserData(interaction.guild.id, targetUser.id);
+                const rankData = levels.getUserRank(interaction.guild.id, targetUser.id);
+                const embed = levels.buildRankEmbed(targetUser, member, { userData, rankData }, interaction.guild.name, COLORS.PRIMARY);
+                return interaction.reply({ embeds: [embed] });
+            }
+        }
+
         // Handle Temp Voice Control Hub (Buttons & Modals)
         if (
             (interaction.isButton() && interaction.customId.startsWith('btn_vc_')) ||
@@ -2043,9 +2165,50 @@ client.on(Events.MessageCreate, async message => {
             }
         }
 
-        if (!message.content.startsWith(PREFIX)) return;
+        // ----------------- CHAT ACTIVITY LEVELING SYSTEM -----------------
+        const isCommandAttempt = message.content.startsWith(PREFIX) || message.content.startsWith(',') || message.content.startsWith('/');
+        if (!isCommandAttempt && message.content.trim().length >= 2) {
+            const xpRes = levels.addMessageXp(message.guild.id, userId);
+            if (xpRes.earned && xpRes.leveledUp) {
+                if (message.member) {
+                    await levels.syncMemberRoles(message.member, xpRes.newLevel);
+                }
 
-        const args = message.content.slice(PREFIX.length).trim().split(/ +/g);
+                let rewardText = '';
+                const hasGifRole = xpRes.unlockedRoles.some(r => r.level === 5);
+                if (hasGifRole) {
+                    rewardText = `\n🎁 **PERK UNLOCKED:** <@&${levels.LEVEL_ROLES[5]}> — You now have **GIF Permissions**! 🖼️✨`;
+                } else if (xpRes.unlockedRoles.length > 0) {
+                    const roleMentions = xpRes.unlockedRoles.map(r => `<@&${r.roleId}>`).join(', ');
+                    rewardText = `\n🎁 **ROLE UNLOCKED:** ${roleMentions}! 🌟`;
+                }
+
+                const levelUpEmbed = new EmbedBuilder()
+                    .setColor(COLORS.SUCCESS)
+                    .setAuthor({
+                        name: `${message.author.username} Leveled Up! 🎉`,
+                        iconURL: message.author.displayAvatarURL({ dynamic: true })
+                    })
+                    .setDescription(
+                        `GG <@${userId}>! You've advanced to **Level ${xpRes.newLevel}** by chatting! 🚀` +
+                        rewardText +
+                        `\n\n*Type \`${PREFIX}levels\` to inspect your rank card & perk milestones.*`
+                    )
+                    .setTimestamp();
+
+                message.channel.send({ embeds: [levelUpEmbed] }).then(m => {
+                    setTimeout(() => m.delete().catch(() => {}), 15000);
+                }).catch(() => {});
+            }
+        }
+
+        let prefixUsed = null;
+        if (message.content.startsWith(PREFIX)) prefixUsed = PREFIX;
+        else if (message.content.startsWith(',')) prefixUsed = ',';
+        else if (message.content.startsWith('/')) prefixUsed = '/';
+        if (!prefixUsed) return;
+
+        const args = message.content.slice(prefixUsed.length).trim().split(/ +/g);
         const cmd = args.shift()?.toLowerCase();
         if (!cmd) return;
 
@@ -2075,11 +2238,136 @@ client.on(Events.MessageCreate, async message => {
             }
         }
 
+        // ----------------- LEVELS & ACTIVITY RANK COMMANDS -----------------
+        if (cmd === 'levels' || cmd === 'level' || cmd === 'rank' || cmd === 'lvl' || cmd === 'xp' || cmd === 'rboard') {
+            const sub = (cmd === 'rboard' ? 'lb' : args[0]?.toLowerCase());
+
+            // Subcommand: Leaderboard (.levels lb, .levels top, .levels leaderboard, .rboard)
+            if (sub === 'lb' || sub === 'leaderboard' || sub === 'top') {
+                const lb = levels.getLeaderboard(message.guild.id, 10);
+                const authorRank = levels.getUserRank(message.guild.id, userId);
+                const authorData = levels.getUserData(message.guild.id, userId);
+                const embed = levels.buildLeaderboardEmbed(message.guild, lb, authorRank.rank, authorData.level, COLORS.GOLD);
+                return fastReply(message, { embeds: [embed] });
+            }
+
+            // Subcommand: Roles / Rewards (.levels roles, .levels rewards)
+            if (sub === 'roles' || sub === 'rewards' || sub === 'perks') {
+                const embed = levels.buildRoleRewardsEmbed(message.guild, COLORS.PRIMARY);
+                return fastReply(message, { embeds: [embed] });
+            }
+
+            // Subcommand: Sync Roles (.levels sync)
+            if (sub === 'sync' || sub === 'syncroles') {
+                const isAdmin = message.member.permissions.has(PermissionsBitField.Flags.ManageRoles) ||
+                                message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+                if (args[1] === 'all' && isAdmin) {
+                    let syncedCount = 0;
+                    const members = await message.guild.members.fetch().catch(() => message.guild.members.cache);
+                    for (const [, m] of members) {
+                        if (m.user.bot) continue;
+                        const uData = levels.getUserData(message.guild.id, m.id);
+                        if (uData.level >= 5) {
+                            const added = await levels.syncMemberRoles(m, uData.level);
+                            if (added.length > 0) syncedCount++;
+                        }
+                    }
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Roles Synchronized 🔄', `Successfully synchronized level milestone roles for **${syncedCount}** member(s).`, COLORS.SUCCESS, '✅')]
+                    });
+                }
+
+                // Self sync
+                const selfData = levels.getUserData(message.guild.id, userId);
+                const added = await levels.syncMemberRoles(message.member, selfData.level);
+                if (added.length > 0) {
+                    const mentions = added.map(r => `<@&${r.roleId}>`).join(', ');
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Roles Updated 🔄', `Synchronized your level roles! Assigned: ${mentions}`, COLORS.SUCCESS, '🎉')]
+                    });
+                } else {
+                    return fastReply(message, {
+                        embeds: [makeEmbed('Roles Up to Date 🔄', `Your level milestone roles are already fully synchronized for **Level ${selfData.level}**!`, COLORS.PRIMARY, '✅')]
+                    });
+                }
+            }
+
+            // Subcommand: Add XP (.levels addxp <@user> <amount>) - Admin only
+            if (sub === 'addxp' || sub === 'add-xp' || sub === 'givexp') {
+                if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return fastReply(message, { embeds: [makeEmbed('Permission Denied ⛔', 'Only Administrators can grant XP to users.', COLORS.DANGER)] });
+                }
+                const target = message.mentions.members.first() || (args[1] ? await message.guild.members.fetch(args[1].replace(/[<@!>]/g, '')).catch(() => null) : null);
+                const amount = parseInt(args[2], 10);
+                if (!target || isNaN(amount) || amount <= 0) {
+                    return fastReply(message, { embeds: [makeEmbed('Invalid Usage ⚠️', `Usage: \`${PREFIX}levels addxp <@user> <amount>\``, COLORS.WARNING)] });
+                }
+                const res = levels.addAdminXp(message.guild.id, target.id, amount);
+                if (res.leveledUp) {
+                    await levels.syncMemberRoles(target, res.newLevel);
+                }
+                return fastReply(message, {
+                    embeds: [makeEmbed('XP Granted ⭐', `Added **${amount.toLocaleString()} XP** to <@${target.id}>!\nNew Level: **${res.newLevel}** • Total XP: \`${res.user.totalXp.toLocaleString()} XP\``, COLORS.SUCCESS, '✨')]
+                });
+            }
+
+            // Subcommand: Set Level (.levels setlevel <@user> <level>) - Admin only
+            if (sub === 'setlevel' || sub === 'set-level') {
+                if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return fastReply(message, { embeds: [makeEmbed('Permission Denied ⛔', 'Only Administrators can set member levels.', COLORS.DANGER)] });
+                }
+                const target = message.mentions.members.first() || (args[1] ? await message.guild.members.fetch(args[1].replace(/[<@!>]/g, '')).catch(() => null) : null);
+                const targetLvl = parseInt(args[2], 10);
+                if (!target || isNaN(targetLvl) || targetLvl < 0) {
+                    return fastReply(message, { embeds: [makeEmbed('Invalid Usage ⚠️', `Usage: \`${PREFIX}levels setlevel <@user> <level>\``, COLORS.WARNING)] });
+                }
+                const res = levels.setAdminLevel(message.guild.id, target.id, targetLvl);
+                await levels.syncMemberRoles(target, targetLvl);
+                return fastReply(message, {
+                    embeds: [makeEmbed('Level Set 🎯', `Set <@${target.id}> to **Level ${targetLvl}**!\nTotal XP scaled: \`${res.user.totalXp.toLocaleString()} XP\`\nMilestone roles synchronized!`, COLORS.SUCCESS, '🎖️')]
+                });
+            }
+
+            // Subcommand: Reset User (.levels reset <@user>) - Admin only
+            if (sub === 'reset') {
+                if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return fastReply(message, { embeds: [makeEmbed('Permission Denied ⛔', 'Only Administrators can reset levels.', COLORS.DANGER)] });
+                }
+                const target = message.mentions.members.first() || (args[1] ? await message.guild.members.fetch(args[1].replace(/[<@!>]/g, '')).catch(() => null) : null);
+                if (!target) {
+                    return fastReply(message, { embeds: [makeEmbed('Invalid Usage ⚠️', `Usage: \`${PREFIX}levels reset <@user>\``, COLORS.WARNING)] });
+                }
+                levels.resetUserData(message.guild.id, target.id);
+                return fastReply(message, {
+                    embeds: [makeEmbed('User Reset 🔄', `Reset all activity XP and level data for <@${target.id}>.`, COLORS.WARNING, '🧹')]
+                });
+            }
+
+            // Default: View Rank Card (.levels [@user])
+            let targetUser = message.author;
+            let targetMember = message.member;
+
+            if (args[0]) {
+                const cleanId = args[0].replace(/[<@!>]/g, '');
+                const resolvedMember = message.mentions.members.first() || await message.guild.members.fetch(cleanId).catch(() => null);
+                if (resolvedMember) {
+                    targetUser = resolvedMember.user;
+                    targetMember = resolvedMember;
+                }
+            }
+
+            const userData = levels.getUserData(message.guild.id, targetUser.id);
+            const rankData = levels.getUserRank(message.guild.id, targetUser.id);
+            const embed = levels.buildRankEmbed(targetUser, targetMember, { userData, rankData }, message.guild.name, COLORS.PRIMARY);
+            return fastReply(message, { embeds: [embed] });
+        }
+
         // ----------------- HELP COMMAND -----------------
         if (cmd === 'help' || cmd === 'cmds' || cmd === 'commands' || cmd === 'h') {
             const subArg = args[0]?.toLowerCase();
             let initialCategory = 'overview';
-            if (['casino', 'gamble', 'eco', 'economy'].includes(subArg)) initialCategory = 'casino';
+            if (['levels', 'level', 'rank', 'xp'].includes(subArg)) initialCategory = 'levels';
+            else if (['casino', 'gamble', 'eco', 'economy'].includes(subArg)) initialCategory = 'casino';
             else if (['music', 'song', 'audio', 'vc'].includes(subArg)) initialCategory = 'music';
             else if (['mod', 'moderation', 'admin'].includes(subArg)) initialCategory = 'mod';
             else if (['ticket', 'tickets', 'support'].includes(subArg)) initialCategory = 'tickets';
@@ -2839,6 +3127,15 @@ client.on(Events.MessageCreate, async message => {
         }
 
         if (cmd === 'leaderboard' || cmd === 'lb' || cmd === 'top') {
+            const subArg = args[0]?.toLowerCase();
+            if (subArg === 'levels' || subArg === 'level' || subArg === 'rank' || subArg === 'xp' || subArg === 'chat') {
+                const lb = levels.getLeaderboard(message.guild.id, 10);
+                const authorRank = levels.getUserRank(message.guild.id, userId);
+                const authorData = levels.getUserData(message.guild.id, userId);
+                const embed = levels.buildLeaderboardEmbed(message.guild, lb, authorRank.rank, authorData.level, COLORS.GOLD);
+                return fastReply(message, { embeds: [embed] });
+            }
+
             const top = eco.getLeaderboard(10);
             let desc = '';
             top.forEach((item, index) => {
@@ -2852,7 +3149,7 @@ client.on(Events.MessageCreate, async message => {
                 .setAuthor({ name: `${message.guild.name} • Wealth Hall of Fame 🏆` })
                 .setTitle('👑 High-Roller Server Leaderboard')
                 .setDescription(desc || '*No registered casino balances yet!*')
-                .setFooter({ text: 'Top 10 High Rollers' })
+                .setFooter({ text: `Top 10 High Rollers • Use ${PREFIX}lb levels for activity rankings` })
                 .setTimestamp();
 
             return fastReply(message, { embeds: [embed] });
